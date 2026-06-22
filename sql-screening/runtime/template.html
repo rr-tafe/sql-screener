@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>__MODULE_TITLE__ — SQL Assessment</title>
+  <style>
+__STYLE_CSS__
+  </style>
+</head>
+<body>
+  <div id="screen1" class="screen screen-start">
+    <div class="start-card">
+      <h1 id="module-title-heading"></h1>
+      <p id="module-description"></p>
+      <label for="candidate-name">Your Full Name</label>
+      <input type="text" id="candidate-name" placeholder="Enter your full name" autocomplete="name" />
+      <button id="begin-btn" class="btn-primary" disabled>Begin Test</button>
+    </div>
+  </div>
+
+  <div id="screen2" class="screen screen-main hidden">
+    <aside id="sidebar" class="sidebar">
+      <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar">&#8249;</button>
+      <div class="sidebar-content">
+        <div class="timer-display" id="timer-display" aria-label="Elapsed time">00:00:00</div>
+        <div id="sidebar-candidate-name" class="sidebar-candidate-name"></div>
+        <nav class="sidebar-nav" aria-label="Section navigation">
+          <!-- Question links injected by app.js -->
+        </nav>
+        <!-- bottom action buttons injected by app.js -->
+      </div>
+    </aside>
+
+    <div id="left-panel-resize-handle" class="panel-resize-handle" aria-hidden="true"></div>
+
+    <main id="center-panel" class="center-panel">
+      <!-- Graded question sections injected here by app.js -->
+      <div id="questions-container"></div>
+    </main>
+
+    <div id="panel-resize-handle" class="panel-resize-handle" aria-hidden="true"></div>
+
+    <aside id="right-panel" class="right-panel">
+      <div class="right-panel-header">
+        <span class="right-panel-title">Playground</span>
+        <button id="schema-toggle-btn" class="schema-toggle-btn" aria-label="Toggle schema panel" aria-expanded="true">&#9650;</button>
+      </div>
+      <div id="playground-schema-section" class="playground-schema-section">
+        <div id="playground-schema-info" class="playground-schema-info"></div>
+      </div>
+      <div class="right-panel-notes-section">
+        <div class="right-panel-section-label">Notes</div>
+        <textarea id="exploration-notes" class="notes-textarea right-panel-notes-textarea" placeholder="Your notes here…" aria-label="Exploration notes"></textarea>
+      </div>
+      <div class="playground-editor-wrap">
+        <div id="playground-editor" class="cm-editor-container" aria-label="Playground SQL editor"></div>
+        <div class="editor-buttons">
+          <button class="btn-run" data-context="playground" aria-label="Run playground query">Run</button>
+          <button class="btn-format" data-context="playground" aria-label="Format playground SQL">Format</button>
+        </div>
+        <div id="playground-status" class="status-area" role="status" aria-live="polite"></div>
+      </div>
+      <div class="right-panel-scroll">
+        <div id="playground-results" class="results-area playground-results"></div>
+
+        <div class="rp-section">
+          <div class="rp-section-header" id="fn-ref-section-header">
+            <span class="rp-section-label">SQLite Reference</span>
+            <button class="rp-section-toggle" id="fn-ref-toggle" aria-expanded="false">&#9660;</button>
+          </div>
+          <div class="rp-section-body hidden" id="fn-ref-body-wrap">
+            <input id="fn-ref-search" class="fn-ref-search" type="text" placeholder="Search functions…" aria-label="Search functions" autocomplete="off" spellcheck="false">
+            <div id="fn-ref-body" class="fn-ref-body"></div>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-header" id="query-history-section-header">
+            <span class="rp-section-label">Query History</span>
+            <button class="rp-section-toggle" id="query-history-toggle" aria-expanded="false">&#9660;</button>
+          </div>
+          <div class="rp-section-body hidden" id="query-history-body"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="screen-locked" class="screen screen-locked hidden">
+    <div class="locked-card">
+      <div class="locked-badge">SESSION LOCKED</div>
+      <h1>Assessment Complete</h1>
+      <p id="locked-candidate" class="locked-candidate"></p>
+      <p id="locked-time" class="locked-meta"></p>
+      <p id="locked-elapsed" class="locked-meta"></p>
+      <p class="locked-message">This assessment session has been completed and locked. Contact your recruiter if you believe this is an error.</p>
+    </div>
+  </div>
+
+  <script>
+var SQL_JS_WASM_B64 = "__SQL_JS_WASM_B64__";
+var DATASET_DB_B64 = "__DATASET_DB_B64__";
+var QUESTIONS_JSON = __QUESTIONS_JSON__;
+var ANSWER_HASHES_JSON = __ANSWER_HASHES_JSON__;
+var SQL_SCHEMA_JSON = __SQL_SCHEMA_JSON__;
+var MODULE_TITLE = "__MODULE_TITLE__";
+var MODULE_VERSION = "__MODULE_VERSION__";
+var MODULE_DESCRIPTION = "__MODULE_DESCRIPTION__";
+  </script>
+  <script>
+__GRADING_LOGIC_JS__
+  </script>
+  <script>
+__CM_EDITOR_BUNDLE_JS__
+  </script>
+  <script>
+__APP_JS__
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "sql-screening-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild runtime/cm-editor-src.js --bundle --outfile=runtime/cm-editor-bundle.js",
+    "test:integration": "node runtime/test/integration_test.js",
+    "test:feature": "node runtime/test/feature_test.js"
+  },
+  "dependencies": {
+    "@codemirror/lang-sql": "^6.8.0",
+    "codemirror": "^6.0.1",
+    "esbuild": "^0.25.0",
+    "jsdom": "^25.0.0",
+    "sql-formatter": "^15.5.0",
+    "sql.js": "^1.12.0"
+  }
+}

@@ -1,0 +1,40 @@
+# ─── macOS ───────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V8
+.Trashes
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# ─── Node.js ─────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ─── Local tooling (maintainer-specific, not project-wide) ───────────────────
+# Claude Code local settings — CLAUDE.md at the repo root IS committed;
+# only the .claude/ directory of local overrides is excluded.
+.claude/
+
+# Specify workflow tool (used by the original maintainer; not required by others)
+.specify/
+specs/
+
+# ─── Editor / IDE ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Other ────────────────────────────────────────────────────────────────────
+dist/
+modules/
