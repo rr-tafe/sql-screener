@@ -273,6 +273,7 @@ These rules apply to all values written into CSV files and any string literals i
 - Count must equal `module.json.questionCount`
 - IDs must be `q1`, `q2`, … `qN` (matching solution delimiters)
 - `expectedColumns` is a positional list — grading matches column values by position, not name
+- **Every question prompt must open with a 1–2 sentence business backstory** that gives the candidate a concrete reason to run the query (e.g. a manager's request, an upcoming report, a customer complaint). The backstory should feel like a real workplace ask, not a textbook exercise. Keep it brief — the goal is engagement, not length. Example: *"The marketing team is preparing a Q3 campaign and needs to know which product categories drove the most revenue last quarter. Return each category and its total revenue."* rather than *"Return each category and its total revenue."*
 - **Question prompts must not imply or require a specific row order.** The grading engine sorts all result rows before comparing, so row order is never part of the correct answer. Do not write prompts like "list the top 5 customers ordered by spend" or "return results sorted by date". Rephrase as "return the 5 customers with the highest spend" or "return all transactions in the past 30 days". The candidate may use ORDER BY for readability, but it must have no bearing on whether their answer is correct.
 
 ### `solutions.sql`
