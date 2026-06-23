@@ -36,5 +36,12 @@ specs/
 *~
 
 # ─── Other ────────────────────────────────────────────────────────────────────
-dist/
-modules/
+# Use glob (not trailing-slash) so git recurses into the directory and
+# negation rules below can carve out the ci-test exception.
+sql-screening/dist/*
+!sql-screening/dist/ci-test.html
+!sql-screening/dist/ci-test-README.md
+
+sql-screening/modules/*
+!sql-screening/modules/ci-test
+!sql-screening/modules/ci-test/**

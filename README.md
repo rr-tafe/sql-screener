@@ -202,7 +202,7 @@ The workflow installs Node.js and Python, then runs:
 
 ```bash
 cd sql-screening/builder
-python builder.py --module modules/digital-bank-marketing-analytics
+python builder.py --module modules/ci-test
 ```
 
 This gives an automated guard that build + integration/feature tests remain
