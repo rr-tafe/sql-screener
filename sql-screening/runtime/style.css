@@ -448,12 +448,33 @@ button:disabled {
   transition: opacity var(--transition-speed);
 }
 
-/* Collapsed sidebar: hide labels and content text */
+/* Collapsed sidebar: hide full labels, show Q-number in place of dot */
 .sidebar.collapsed .nav-label {
   opacity: 0;
   width: 0;
   pointer-events: none;
 }
+
+.sidebar.collapsed .nav-dot {
+  display: none;
+}
+
+.sidebar.collapsed .nav-link::before {
+  content: attr(data-qnum);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  letter-spacing: 0.03em;
+}
+
+.sidebar.collapsed .nav-link.active::before {
+  color: var(--color-accent);
+}
+
+.sidebar.collapsed .nav-link[data-status="pass"]::before        { color: var(--badge-pass-border); }
+.sidebar.collapsed .nav-link[data-status="fail"]::before        { color: var(--badge-fail-border); }
+.sidebar.collapsed .nav-link[data-status="error"]::before       { color: var(--badge-error-border); }
+.sidebar.collapsed .nav-link[data-status="not-permitted"]::before { color: var(--badge-np-border); }
 
 .sidebar.collapsed .sidebar-nav {
   padding: 0.25rem 0;

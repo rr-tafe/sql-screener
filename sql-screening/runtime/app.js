@@ -186,6 +186,7 @@
       a.href = '#section-' + q.id;
       a.className = 'nav-link';
       a.setAttribute('data-section', q.id);
+      a.setAttribute('data-qnum', 'Q' + (idx + 1));
 
       var dot = document.createElement('span');
       dot.className = 'nav-dot';
@@ -529,7 +530,8 @@
       if (!isDragging) return;
       var rect = screenMain.getBoundingClientRect();
       var newWidth = rect.right - e.clientX - 4;
-      newWidth = Math.max(200, Math.min(700, newWidth));
+      var maxWidth = Math.floor((rect.right - rect.left) * 0.75);
+      newWidth = Math.max(200, Math.min(maxWidth, newWidth));
       document.documentElement.style.setProperty('--right-panel-width', newWidth + 'px');
     });
 
@@ -1226,6 +1228,14 @@
     dot.className = 'nav-dot';
     if (status) {
       dot.classList.add('dot-' + status.replace(/-/g, '-'));
+    }
+    var link = document.querySelector('[data-section="' + qId + '"]');
+    if (link) {
+      if (status) {
+        link.setAttribute('data-status', status);
+      } else {
+        link.removeAttribute('data-status');
+      }
     }
   }
 
