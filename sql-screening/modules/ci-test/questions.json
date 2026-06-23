@@ -1,0 +1,11 @@
+[
+  {
+    "id": "q1",
+    "prompt": "List all products in the 'Electronics' category. Return the product_id and name, ordered by product_id ascending.",
+    "expectedColumns": [
+      "product_id",
+      "name"
+    ],
+    "difficulty": "easy"
+  }
+]

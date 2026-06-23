@@ -1,0 +1,8 @@
+{
+  "id": "ci-test",
+  "title": "CI Test Module",
+  "description": "Minimal module used by the CI pipeline to verify the build system end-to-end. Not a real assessment.",
+  "version": "1.0.0",
+  "questionCount": 1,
+  "engine": "sqlite"
+}
