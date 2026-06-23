@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module Builder Guide — SQL Assessment Framework</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #f7f8fa;
+    }
+
+    .page-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+
+    header {
+      border-bottom: 3px solid #0f766e;
+      padding-bottom: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #134e4a;
+      letter-spacing: -0.01em;
+    }
+
+    header p {
+      margin-top: 0.4rem;
+      color: #555;
+      font-size: 0.95rem;
+    }
+
+    .persona-switcher {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .persona-label {
+      flex: 1;
+      min-width: 200px;
+      background: #fff;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    .persona-label strong {
+      display: block;
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .persona-label p {
+      font-size: 0.85rem;
+      color: #555;
+      margin: 0;
+    }
+
+    .persona-a .persona-label { border-color: #0f766e; }
+    .persona-b .persona-label { border-color: #1d4ed8; }
+
+    .part-header {
+      border-radius: 8px;
+      padding: 1rem 1.5rem;
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .part-a-header {
+      background: #ccfbf1;
+      border-left: 5px solid #0f766e;
+    }
+
+    .part-b-header {
+      background: #dbeafe;
+      border-left: 5px solid #1d4ed8;
+    }
+
+    .part-header h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      padding: 0;
+      border: none;
+      color: #1a1a1a;
+    }
+
+    .part-header p {
+      margin-top: 0.25rem;
+      font-size: 0.9rem;
+      color: #374151;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #134e4a;
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+      padding-left: 0.75rem;
+      border-left: 4px solid #0f766e;
+    }
+
+    .part-b h2 { color: #1e3a8a; border-left-color: #1d4ed8; }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-top: 1.5rem;
+      margin-bottom: 0.4rem;
+    }
+
+    p { margin-top: 0.6rem; }
+
+    ul, ol {
+      margin-top: 0.5rem;
+      padding-left: 1.4rem;
+    }
+
+    li { margin-top: 0.3rem; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .tip {
+      background: #f0fdfa;
+      border-left: 4px solid #0f766e;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.93rem;
+      color: #134e4a;
+    }
+
+    .tip-blue {
+      background: #eff6ff;
+      border-left: 4px solid #1d4ed8;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.93rem;
+      color: #1e3a8a;
+    }
+
+    .warning {
+      background: #fef9c3;
+      border-left: 4px solid #ca8a04;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.93rem;
+      color: #78350f;
+    }
+
+    pre, code {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    }
+
+    pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      margin-top: 0.75rem;
+      line-height: 1.6;
+    }
+
+    code {
+      font-size: 0.88em;
+      background: #f1f5f9;
+      border-radius: 3px;
+      padding: 0.1rem 0.3rem;
+      color: #0f172a;
+    }
+
+    pre code {
+      background: none;
+      color: inherit;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
+
+    .comment { color: #94a3b8; }
+    .str     { color: #86efac; }
+    .kw      { color: #67e8f9; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: #f1f5f9;
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      font-weight: 600;
+    }
+
+    td {
+      padding: 0.45rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    .step {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-top: 1.25rem;
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 30px;
+      height: 30px;
+      background: #0f766e;
+      color: #fff;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 0.05rem;
+    }
+
+    .part-b .step-num { background: #1d4ed8; }
+
+    .step-body { flex: 1; }
+    .step-body p { margin-top: 0.25rem; }
+
+    .file-tree {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      margin-top: 0.75rem;
+    }
+
+    .file-tree .dir  { color: #67e8f9; }
+    .file-tree .file { color: #e2e8f0; }
+    .file-tree .req  { color: #86efac; font-weight: bold; }
+    .file-tree .cmt  { color: #94a3b8; }
+
+    .error-table td:first-child {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.8rem;
+      color: #dc2626;
+      white-space: pre;
+    }
+
+    toc-nav {
+      display: block;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    toc-nav ul {
+      list-style: none;
+      padding: 0;
+      columns: 2;
+    }
+
+    toc-nav li { margin-top: 0.3rem; }
+
+    toc-nav a {
+      color: #0f766e;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    toc-nav a:hover { text-decoration: underline; }
+
+    .divider {
+      border: none;
+      border-top: 2px dashed #e2e8f0;
+      margin: 3rem 0;
+    }
+
+    @media (max-width: 600px) {
+      toc-nav ul { columns: 1; }
+      .persona-switcher { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <header>
+    <h1>Module Builder Guide — SQL Assessment Framework</h1>
+    <p>How to create a new SQL assessment module from scratch and produce a distributable candidate file.</p>
+  </header>
+
+  <div class="persona-switcher">
+    <div class="persona-label persona-a">
+      <strong>Part A — Domain Expert</strong>
+      <p>You know the subject matter. You will use an LLM (Claude, ChatGPT) to generate the module content. No coding required. Hand off the output to a developer to build.</p>
+    </div>
+    <div class="persona-label persona-b">
+      <strong>Part B — Developer</strong>
+      <p>You receive the generated module files and run the build pipeline to produce the final candidate <code>.html</code> file.</p>
+    </div>
+  </div>
+
+  <toc-nav>
+    <strong>Contents</strong>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#a1">A1 · Use the LLM template</a></li>
+      <li><a href="#a2">A2 · Review the output</a></li>
+      <li><a href="#a3">A3 · Place or pass the module</a></li>
+      <li><a href="#a4">A4 · Hand off to developer</a></li>
+      <li><a href="#b1">B1 · Prerequisites &amp; setup</a></li>
+      <li><a href="#b2">B2 · Run the builder</a></li>
+      <li><a href="#b3">B3 · Understand the output</a></li>
+      <li><a href="#b4">B4 · Common errors</a></li>
+      <li><a href="#b5">B5 · Distributing the file</a></li>
+    </ul>
+  </toc-nav>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="overview">Overview</h2>
+
+  <p>Building a module is a two-phase process:</p>
+  <ol>
+    <li><strong>Content generation (Part A)</strong> — A domain expert uses an LLM prompt template to produce all the module files: schema, data, questions, and reference answers.</li>
+    <li><strong>Build &amp; packaging (Part B)</strong> — A developer runs a Python script that validates the content, runs all reference answers against the database to verify them, and packages everything into a single self-contained <code>.html</code> file ready to send to candidates.</li>
+  </ol>
+
+  <p>The two parts are intentionally decoupled. The domain expert does not need any technical tools. The developer does not need to know the subject matter — the build script validates the content automatically.</p>
+
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <hr class="divider">
+  <div class="part-a-header part-header">
+    <h2>Part A — Domain Expert: Generating Module Content</h2>
+    <p>Start here if you are designing the assessment questions and data.</p>
+  </div>
+
+  <div class="part-a">
+
+    <!-- A1 -->
+    <h2 id="a1">A1 · Use the LLM template</h2>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Open the template file.</strong>
+        <p>Find <code>template/MODULE_TEMPLATE.md</code> in the project. Open it in any text editor and copy the entire contents.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Paste into Claude or ChatGPT.</strong>
+        <p>Start a new conversation, paste the template, and send it. The LLM will begin an interview to understand your module requirements.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Answer the interview questions.</strong>
+        <p>The LLM will ask up to eight questions. Answers guide all the generated content, so be specific:</p>
+        <ul>
+          <li><strong>Domain / industry</strong> — e.g. "retail banking", "e-commerce logistics"</li>
+          <li><strong>Target role and seniority</strong> — e.g. "mid-level Business Analyst"</li>
+          <li><strong>Business scenario</strong> — the fictional context the candidate will work within</li>
+          <li><strong>Question count</strong> — typically 4–8 questions</li>
+          <li><strong>Difficulty distribution</strong> — e.g. "2 easy, 3 medium, 1 hard"</li>
+          <li><strong>Data volume tier</strong> — small (dozens of rows), medium (hundreds), or large (thousands). Larger = more realistic, but larger file size.</li>
+          <li><strong>SQL concepts to test</strong> — e.g. "JOINs, GROUP BY, window functions, date arithmetic"</li>
+          <li><strong>Data quality edge cases</strong> — e.g. "NULL values in amounts, duplicate enrollments"</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Wait for the generated output.</strong>
+        <p>After the interview, the LLM will produce all seven module files in a single response. Do not interrupt it mid-generation.</p>
+      </div>
+    </div>
+
+    <div class="tip">
+      If the LLM's response is cut off (this can happen with very large modules), ask it to "continue from where you left off." You may need to do this a couple of times for large data volumes.
+    </div>
+
+
+    <!-- A2 -->
+    <h2 id="a2">A2 · Review the LLM output</h2>
+
+    <p>Before doing anything else with the zip, open the files and spend 10–15 minutes reading them. Focus on content, not formatting — the build script validates structure automatically.</p>
+
+    <div class="warning">
+      <strong>Open files as read-only where possible.</strong> Several files (<code>questions.json</code>, <code>solutions.sql</code>, <code>module.json</code>) have a strict format that the build script enforces exactly. Accidentally saving a file with a stray character or encoding change can cause a validation failure. View them in a text editor rather than a spreadsheet tool, and resist the urge to reformat anything.
+    </div>
+
+    <h3>Questions</h3>
+    <ul>
+      <li>Read each question prompt as a candidate would. Is the business intent clear?</li>
+      <li>Check the expected columns list for each question — do they match what the reference SQL in <code>solutions.sql</code> actually selects?</li>
+      <li>Make sure no question reveals the answer to another question.</li>
+    </ul>
+
+    <h3>Data</h3>
+    <ul>
+      <li>Spot-check a few CSV rows for plausibility — dates in the right format, numeric amounts in a sensible range, foreign key IDs that exist in the referenced table.</li>
+      <li>Confirm the LLM included the data quality edge cases you asked for (NULLs, duplicates, etc.).</li>
+    </ul>
+
+    <h3>Reference answers</h3>
+    <ul>
+      <li>You do not need to run the SQL — the build step does that. But read each solution in <code>solutions.sql</code> to confirm it is answering the right business question.</li>
+    </ul>
+
+    <div class="warning">
+      <strong>Do not add plaintext expected results</strong> to any file. The reference answers are hashed by the build script — if a candidate can read the expected values from the file, the assessment is compromised.
+    </div>
+
+
+    <!-- A3 -->
+    <h2 id="a3">A3 · Place or pass the module</h2>
+
+    <p>The LLM delivers a zip file named <code>&lt;module-id&gt;.zip</code>. Inside it is a single folder — <code>&lt;module-id&gt;/</code> — already structured correctly. You do not need to rename or reorganise anything.</p>
+
+    <p>Choose the path that fits your situation:</p>
+
+    <div class="step">
+      <div class="step-num">A</div>
+      <div class="step-body">
+        <strong>You are also the developer</strong> (running the build yourself).<br>
+        Extract the zip and move the extracted <code>&lt;module-id&gt;/</code> folder directly into the <code>modules/</code> directory of the project. Then proceed to Part B.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">B</div>
+      <div class="step-body">
+        <strong>A separate developer will run the build.</strong><br>
+        Send them the zip file as-is — no need to extract it first. Include a brief note on what the module covers and the intended candidate profile (role and seniority level), so they have context if the build raises questions. The developer extracts the zip, drops the folder into <code>modules/</code>, and runs the build script.
+      </div>
+    </div>
+
+    <div class="tip">
+      If you need to make any corrections after reviewing (A2), edit the relevant file inside the extracted folder before handing it off. Do not edit files inside the zip directly — extract first, edit, then re-zip if you need to send it to someone.
+    </div>
+
+
+    <!-- A4 -->
+    <h2 id="a4">A4 · What the developer does with it</h2>
+
+    <p>The developer runs the build script against the module folder. If all reference answers pass validation, they produce a single <code>.html</code> file in the <code>dist/</code> folder. They will send this back to you to review before distributing it to candidates. See Part B for the full developer workflow.</p>
+
+  </div><!-- end .part-a -->
+
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <hr class="divider">
+  <div class="part-b-header part-header">
+    <h2>Part B — Developer: Building and Packaging</h2>
+    <p>Start here once the module folder is ready. You will validate the content, run the reference solutions, and produce the distributable HTML file.</p>
+  </div>
+
+  <div class="part-b">
+
+    <!-- B1 -->
+    <h2 id="b1">B1 · Prerequisites &amp; one-time setup</h2>
+
+    <h3>Required</h3>
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Minimum version</th><th>Check</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Python</td><td>3.8</td><td><code>python3 --version</code></td></tr>
+        <tr><td>Node.js</td><td>18</td><td><code>node --version</code></td></tr>
+        <tr><td>npm</td><td>any</td><td><code>npm --version</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>One-time npm install</h3>
+    <p>Run this once per machine, from the <code>sql-screening/</code> directory:</p>
+    <pre><code>cd sql-screening/runtime
+npm install</code></pre>
+
+    <p>This installs CodeMirror, sql.js, esbuild, and jsdom. If <code>node_modules</code> already exists and you haven't changed <code>package.json</code>, you can skip this.</p>
+
+    <div class="tip-blue">
+      The builder has no Python dependencies beyond the standard library. You do not need to create a virtualenv or run <code>pip install</code>.
+    </div>
+
+
+    <!-- B2 -->
+    <h2 id="b2">B2 · Run the builder</h2>
+
+    <p>From the <code>sql-screening/</code> directory, run:</p>
+
+    <pre><code>python3 builder/builder.py --module=modules/&lt;module-id&gt;</code></pre>
+
+    <p>For example:</p>
+
+    <pre><code>python3 builder/builder.py --module=modules/retail-credit-scoring</code></pre>
+
+    <h3>What happens during the build</h3>
+    <p>The builder runs 13 steps in sequence. You will see numbered progress output:</p>
+
+    <table>
+      <thead>
+        <tr><th>Step</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>[1]</td><td>Checks all required files exist and are valid JSON/SQL</td></tr>
+        <tr><td>[2]</td><td>Confirms <code>engine</code> is <code>"sqlite"</code></td></tr>
+        <tr><td>[3]</td><td>Confirms <code>questionCount</code> matches the number of questions in <code>questions.json</code></td></tr>
+        <tr><td>[4]</td><td>Builds an in-memory SQLite database from the schema and CSV data</td></tr>
+        <tr><td>[5–6]</td><td>Runs every reference solution and computes an answer hash for each</td></tr>
+        <tr><td>[7]</td><td><strong>Validation gate</strong> — every solution must match its hash. Fails the build if any solution errors or produces unexpected results</td></tr>
+        <tr><td>[8]</td><td>Derives a schema map for the editor's autocomplete feature</td></tr>
+        <tr><td>[9]</td><td>Serialises the SQLite database to base64 for embedding in the HTML</td></tr>
+        <tr><td>[10]</td><td>Assembles the final HTML, inlining all assets</td></tr>
+        <tr><td>[11]</td><td>Writes output files to <code>dist/</code></td></tr>
+        <tr><td>[12]</td><td>Runs the JavaScript test harness to verify the assembled HTML</td></tr>
+        <tr><td>[13]</td><td>Reports file size; warns if over 5 MB</td></tr>
+      </tbody>
+    </table>
+
+    <div class="warning">
+      <strong>The build is all-or-nothing.</strong> If any step fails, no output file is written (and any previously written output is deleted). Fix the reported error and re-run.
+    </div>
+
+    <h3>Successful output</h3>
+    <p>A successful build ends with:</p>
+    <pre><code>Build complete: …/dist/retail-credit-scoring.html</code></pre>
+
+    <p>Two files are written to <code>dist/</code>:</p>
+    <ul>
+      <li><code>&lt;id&gt;.html</code> — the candidate assessment file</li>
+      <li><code>&lt;id&gt;-README.md</code> — the module readme (copied from the module folder)</li>
+    </ul>
+
+
+    <!-- B3 -->
+    <h2 id="b3">B3 · Understand the output</h2>
+
+    <p>The <code>dist/&lt;id&gt;.html</code> file is the only file candidates need. It is fully self-contained — the SQL engine, database, all questions, and the answer hashes are embedded inside it. You can email it, upload it to Google Drive, or put it on a shared network drive.</p>
+
+    <div class="tip-blue">
+      <strong>Before distributing:</strong> Open <code>dist/&lt;id&gt;.html</code> in your browser and complete a few questions yourself to verify the UX. The test harness verifies correctness, but a manual check catches presentation issues.
+    </div>
+
+    <h3>File size</h3>
+    <p>The tool embeds sql.js (the SQL engine) as a WebAssembly binary. A typical build is 1.5–2 MB. This is normal. The builder will warn (but not fail) if the file exceeds 5 MB — this usually means the data CSVs are very large.</p>
+
+
+    <!-- B4 -->
+    <h2 id="b4">B4 · Common errors and fixes</h2>
+
+    <table class="error-table">
+      <thead>
+        <tr><th>Error message</th><th>What it means and how to fix it</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Required file missing: …/questions.json</td>
+          <td>A required module file is absent. Confirm the extracted zip folder was placed directly inside <code>modules/</code> without renaming. Ensure filenames match exactly (case-sensitive on Linux/macOS).</td>
+        </tr>
+        <tr>
+          <td>Missing CSV for table 'X'</td>
+          <td>The schema defines a table named <code>X</code> but there is no <code>data/X.csv</code>. Either add the missing CSV or remove the table from <code>schema.sql</code>.</td>
+        </tr>
+        <tr>
+          <td>questions.json is not valid JSON</td>
+          <td>JSON syntax error. Paste the file into <a href="https://jsonlint.com" target="_blank" rel="noopener">jsonlint.com</a> to find the exact line. Common causes: trailing commas, unescaped quotes inside strings.</td>
+        </tr>
+        <tr>
+          <td>questionCount mismatch</td>
+          <td><code>module.json</code> says there are N questions but <code>questions.json</code> has a different count. Update the <code>questionCount</code> field in <code>module.json</code>.</td>
+        </tr>
+        <tr>
+          <td>No solution block found for 'q3'</td>
+          <td><code>solutions.sql</code> is missing the <code>-- q3</code> delimiter for question 3. Check that every question has a corresponding <code>-- qN</code> comment and that they are in order.</td>
+        </tr>
+        <tr>
+          <td>Solution for 'q2' raised an exception: …</td>
+          <td>The reference SQL for question 2 has a runtime error (bad column name, wrong table name, etc.). Fix the SQL in <code>solutions.sql</code>. The full SQLite error is included in the message.</td>
+        </tr>
+        <tr>
+          <td>Solution validation gate failed</td>
+          <td>One or more solutions errored. Individual errors are listed above this message. Fix them and re-run.</td>
+        </tr>
+        <tr>
+          <td>sql.js WASM file not found … Run 'npm install'</td>
+          <td><code>npm install</code> has not been run in <code>runtime/</code>, or the packages were not installed correctly. Run <code>cd runtime && npm install</code>.</td>
+        </tr>
+        <tr>
+          <td>JS test failed: integration_test.js</td>
+          <td>The assembled HTML failed the automated test harness. This is rare and usually indicates a mismatch between the solutions and the expected answer hashes. Review the test output above the error line.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Debugging a solution failure</h3>
+    <p>If a reference solution fails validation, the fastest way to debug it is to:</p>
+    <ol>
+      <li>Run the schema and data in any SQLite tool (e.g. the <a href="https://sqlitebrowser.org" target="_blank" rel="noopener">DB Browser for SQLite</a>) to create a test database.</li>
+      <li>Paste the failing solution SQL and run it.</li>
+      <li>Compare the result to what the question's <code>expectedColumns</code> specifies.</li>
+      <li>Fix the solution in <code>solutions.sql</code> and re-run the builder.</li>
+    </ol>
+
+
+    <!-- B5 -->
+    <h2 id="b5">B5 · Distributing the file</h2>
+
+    <p>Once the build succeeds, share <code>dist/&lt;id&gt;.html</code> with the screener. The screener guide explains how to forward it to candidates.</p>
+
+    <h3>Each candidate gets the same file</h3>
+    <p>The assessment file is not personalised — you send the same <code>.html</code> to every candidate for a given module. The session lock is stored in the candidate's browser, so each candidate's session is isolated on their own machine.</p>
+
+    <h3>Running multiple modules</h3>
+    <p>Each module is independent. Run the builder once per module. Each produces its own <code>dist/&lt;id&gt;.html</code> file. You can have many modules in <code>modules/</code> and build them at any time.</p>
+
+    <h3>Rebuilding after changes</h3>
+    <p>If you edit any module file (questions, data, solutions), re-run <code>builder.py</code>. The output HTML is overwritten only if the new build passes all validation. There is no incremental build — the full pipeline runs each time.</p>
+
+    <div class="warning">
+      <strong>Do not distribute a file from a previous build</strong> if you have made changes to the module content. Always rebuild and test before sending a new batch of candidates the updated file.
+    </div>
+
+  </div><!-- end .part-b -->
+
+</div>
+</body>
+</html>

@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screener Guide — SQL Assessment Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #f7f8fa;
+    }
+
+    .page-wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+
+    header {
+      border-bottom: 3px solid #7c3aed;
+      padding-bottom: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #4c1d95;
+      letter-spacing: -0.01em;
+    }
+
+    header p {
+      margin-top: 0.4rem;
+      color: #555;
+      font-size: 0.95rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #4c1d95;
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+      padding-left: 0.75rem;
+      border-left: 4px solid #7c3aed;
+    }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-top: 1.5rem;
+      margin-bottom: 0.4rem;
+    }
+
+    p { margin-top: 0.6rem; }
+
+    ul, ol {
+      margin-top: 0.5rem;
+      padding-left: 1.4rem;
+    }
+
+    li { margin-top: 0.3rem; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .tip {
+      background: #f5f3ff;
+      border-left: 4px solid #7c3aed;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.93rem;
+      color: #3b0764;
+    }
+
+    .warning {
+      background: #fef9c3;
+      border-left: 4px solid #ca8a04;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.93rem;
+      color: #78350f;
+    }
+
+    .callout-do {
+      background: #f0fdf4;
+      border-left: 4px solid #16a34a;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.93rem;
+      color: #14532d;
+    }
+
+    .callout-dont {
+      background: #fef2f2;
+      border-left: 4px solid #dc2626;
+      border-radius: 0 6px 6px 0;
+      padding: 0.75rem 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.93rem;
+      color: #7f1d1d;
+    }
+
+    .checklist {
+      list-style: none;
+      padding: 0;
+      margin-top: 0;
+    }
+
+    .checklist li {
+      position: relative;
+      padding-left: 1.6rem;
+      margin-top: 0.55rem;
+    }
+
+    .checklist li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.28rem;
+      width: 0.8rem;
+      height: 0.8rem;
+      border: 1.5px solid #9ca3af;
+      border-radius: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: #f1f5f9;
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      font-weight: 600;
+    }
+
+    td {
+      padding: 0.45rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    code {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.88em;
+      background: #f1f5f9;
+      border-radius: 3px;
+      padding: 0.1rem 0.3rem;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      letter-spacing: 0.03em;
+      vertical-align: middle;
+    }
+
+    .badge-pass  { background: #dcfce7; color: #166534; }
+    .badge-fail  { background: #fee2e2; color: #991b1b; }
+    .badge-error { background: #fff7ed; color: #9a3412; }
+    .badge-np    { background: #f1f5f9; color: #475569; }
+
+    .phase {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-top: 1.5rem;
+      overflow: hidden;
+    }
+
+    .phase-header {
+      background: #4c1d95;
+      color: #fff;
+      padding: 0.6rem 1.25rem;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.04em;
+    }
+
+    .phase-body {
+      padding: 1rem 1.25rem;
+    }
+
+    toc-nav {
+      display: block;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    toc-nav ul {
+      list-style: none;
+      padding: 0;
+      columns: 2;
+    }
+
+    toc-nav li { margin-top: 0.3rem; }
+
+    toc-nav a {
+      color: #7c3aed;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    toc-nav a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      toc-nav ul { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <header>
+    <h1>SQL Assessment Tool — Screener Guide</h1>
+    <p>Everything you need to set up, run, and debrief a live-proctored SQL technical screen.</p>
+  </header>
+
+  <toc-nav>
+    <strong>Contents</strong>
+    <ul>
+      <li><a href="#what-is-this">1 · What is this tool?</a></li>
+      <li><a href="#before">2 · Before the session</a></li>
+      <li><a href="#during">3 · During the session</a></li>
+      <li><a href="#ending">4 · Ending the assessment</a></li>
+      <li><a href="#results">5 · Getting results back</a></li>
+      <li><a href="#integrity">6 · Verifying report integrity</a></li>
+      <li><a href="#reviewing">7 · Reviewing the results</a></li>
+      <li><a href="#guidance">8 · Guidance you can give</a></li>
+      <li><a href="#troubleshooting">9 · Troubleshooting</a></li>
+    </ul>
+  </toc-nav>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="what-is-this">1 · What is this tool?</h2>
+
+  <p>The assessment is a single <code>.html</code> file. It contains everything — the questions, a real SQL database, a SQL engine, an editor, and an auto-grader. The candidate opens it in any modern browser. No internet connection, no logins, no software to install.</p>
+
+  <p>When the candidate finishes, the tool downloads a results file to their computer. They send that file to you. You open it in your browser to review their answers.</p>
+
+  <div class="tip">
+    The file you send to candidates is the file in the <code>dist/</code> folder ending in <code>.html</code> — for example, <code>banking-incentive-campaigns.html</code>. This is the only file you need to share.
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="before">2 · Before the session</h2>
+
+  <div class="phase">
+    <div class="phase-header">24 HOURS BEFORE</div>
+    <div class="phase-body">
+      <ul class="checklist">
+        <li>Confirm the video call link (Zoom, Google Meet, Teams — any works) and share it with the candidate.</li>
+        <li>Send the candidate the <strong>Candidate Guide</strong> (<code>candidate-guide.html</code>). Ask them to read it beforehand so they are not learning the interface during the test.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-header">5 MINUTES BEFORE</div>
+    <div class="phase-body">
+      <ul class="checklist">
+        <li>Send the candidate the <strong>assessment file</strong> (<code>.html</code>) — for example, <code>banking-incentive-campaigns.html</code>. Do not share this file any earlier.</li>
+        <li>Join the video call and ask the candidate to share their screen.</li>
+        <li>Verify you can see their browser clearly — you will be watching their screen throughout.</li>
+        <li>Ask them to have the assessment file ready to open but <strong>not yet opened</strong>. The timer starts the moment they click "Begin Test".</li>
+        <li>Let them know how much time they have (the tool has no countdown — you manage time).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="warning">
+    <strong>The file must be opened fresh.</strong> If the candidate already opened it and clicked "Begin Test", the session is in progress and cannot be restarted. Have them close and reopen the file only if they have <em>not</em> yet clicked Begin.
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="during">3 · During the session</h2>
+
+  <h3>What you will see on their screen</h3>
+  <p>The interface has three panels. On the <strong>left</strong> you can see the timer counting up and coloured dots next to each question number. On the <strong>center</strong> are the questions they are working on. On the <strong>right</strong> is a scratch-pad playground.</p>
+
+  <h3>Status dots — at a glance</h3>
+  <table>
+    <thead>
+      <tr><th>Dot colour</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Grey (no dot)</td><td>Not yet attempted</td></tr>
+      <tr><td><span class="badge badge-pass">PASS</span></td><td>Correct answer submitted</td></tr>
+      <tr><td><span class="badge badge-fail">FAIL</span></td><td>Ran a query; answer is wrong</td></tr>
+      <tr><td><span class="badge badge-error">ERROR</span></td><td>SQL has a syntax or runtime error</td></tr>
+      <tr><td><span class="badge badge-np">NOT PERMITTED</span></td><td>Tried to run a blocked SQL statement</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Your role during the test</h3>
+  <p>This is primarily an observation session. Stay on the call, watch their screen, and take your own notes.</p>
+
+  <div class="callout-do">
+    <strong>You can:</strong>
+    <ul>
+      <li>Clarify the business question if the candidate is confused about what is being asked (not how to write the SQL).</li>
+      <li>Confirm the expected data format if there is genuine ambiguity in the question wording.</li>
+      <li>Tell them how much time remains.</li>
+      <li>Ask them to talk through their thinking — "can you explain what you're trying to do?" — if you want to assess reasoning, not just the final query.</li>
+    </ul>
+  </div>
+
+  <div class="callout-dont">
+    <strong>Do not:</strong>
+    <ul>
+      <li>Tell them which SQL functions or clauses to use.</li>
+      <li>Confirm or deny whether their approach is correct before they run it.</li>
+      <li>Hint at the schema or data shape beyond what is visible in the tool.</li>
+    </ul>
+  </div>
+
+  <div class="tip">
+    <strong>Note what you observe beyond the score:</strong> How do they approach a problem? Do they explore the data first? How do they debug when something fails? These observations matter as much as PASS/FAIL counts.
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="ending">4 · Ending the assessment</h2>
+
+  <p>You control the clock. The tool has no countdown timer and will not end automatically. When time is up (or the candidate signals they are finished):</p>
+
+  <ol>
+    <li>Tell the candidate: <em>"Please click the Finish Work button in the sidebar whenever you're ready."</em></li>
+    <li>A confirmation dialog appears on their screen — they confirm.</li>
+    <li>The screen changes to "SESSION LOCKED" and a results file downloads automatically.</li>
+    <li><strong>A short code appears on the locked screen</strong> under the heading "Report Integrity Fingerprint" — for example, <code>A3F2-B891-7C4D-E520</code>. <strong>Screenshot or write down this code immediately.</strong> You will use it to verify the report file has not been altered before you receive it.</li>
+  </ol>
+
+  <div class="warning">
+    Once they click Finish Work, the session is locked permanently. They cannot re-open the test in the same browser. Do not ask them to click Finish until you are sure the session is complete.
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="results">5 · Getting results back</h2>
+
+  <p>When the candidate clicks Finish Work, a file named something like <code>Banking_Incentive_Campaigns_results.html</code> downloads automatically to their default Downloads folder.</p>
+
+  <h3>How to receive the file</h3>
+  <p>Ask the candidate to send you this file. Common options:</p>
+  <ul>
+    <li>Email it as an attachment.</li>
+    <li>Upload to a shared folder (Google Drive, Dropbox, etc.).</li>
+    <li>If you are still on the video call, they can share it via the chat feature of your video tool.</li>
+  </ul>
+
+  <h3>If the download didn't happen</h3>
+  <p>If the candidate reports no file downloaded, check these in order:</p>
+  <ol>
+    <li><strong>Check the Downloads folder</strong> — it may have downloaded silently without a notification.</li>
+    <li><strong>Check the browser's download bar</strong> — some browsers (Firefox, Edge) show downloads in a bar at the bottom or top of the window.</li>
+    <li><strong>Pop-up blocker active:</strong> A blue banner should appear on the locked screen saying "Your results have been saved as a downloaded HTML file." This confirms the download did complete — they just need to look in their Downloads folder.</li>
+    <li>If there is truly no file, ask them to check for any browser download permission dialogs they may have dismissed.</li>
+  </ol>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="integrity">6 · Verifying report integrity</h2>
+
+  <p>The results file includes a tamper-evidence mechanism. Because the file lives on the candidate's machine between submission and delivery to you, this lets you confirm it has not been edited.</p>
+
+  <h3>How it works</h3>
+  <p>When the candidate clicks Finish Work, the tool computes a fingerprint from their answers, SQL, and notes. This fingerprint appears in two places:</p>
+  <ul>
+    <li><strong>On the locked screen</strong> (visible to you via screen share) — the "Report Integrity Fingerprint" code, e.g. <code>A3F2-B891-7C4D-E520</code>.</li>
+    <li><strong>At the top of the results file</strong> — the same code, plus an automated VERIFIED / INTEGRITY CHECK FAILED banner computed when the report is opened.</li>
+  </ul>
+
+  <h3>Step-by-step verification</h3>
+  <ol>
+    <li><strong>During the call:</strong> When the locked screen appears, screenshot or write down the fingerprint code.</li>
+    <li><strong>When you receive the file:</strong> Open the <code>_results.html</code> file in a browser. The fingerprint is shown in a box at the very top of the page.</li>
+    <li><strong>Check the code matches</strong> what you recorded from the screen.</li>
+    <li><strong>Check the VERIFIED banner</strong> — the report runs an automatic integrity check when opened and displays a green ✓ VERIFIED message if nothing has been changed, or a red warning if it detects a discrepancy.</li>
+  </ol>
+
+  <div class="tip">
+    The automated check catches simple edits (changing FAIL to PASS in the HTML text). The fingerprint code you recorded during the live session is the stronger safeguard — a sophisticated edit would need to produce the exact same code, which is computationally infeasible.
+  </div>
+
+  <div class="warning">
+    <strong>The fingerprint was not recorded?</strong> If you forgot to note the code during the call, the automated VERIFIED banner in the report is still useful — it catches naive modifications. If the banner shows VERIFIED, the report is almost certainly unaltered.
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="reviewing">7 · Reviewing the results</h2>
+
+  <p>Open the <code>_results.html</code> file in any browser. No internet connection needed.</p>
+
+  <h3>What the report contains</h3>
+  <ul>
+    <li><strong>Candidate name and timestamps</strong> — when the test started, when it was exported, total elapsed time.</li>
+    <li><strong>Overall score</strong> — number of questions passed out of the total.</li>
+    <li><strong>Notes</strong> — anything the candidate typed in the notes area during the test.</li>
+    <li><strong>Per-question breakdown</strong> — the question prompt, expected columns, the SQL they submitted, their final status (PASS / FAIL / ERROR / NOT ATTEMPTED), and the result rows they got back.</li>
+    <li><strong>Playground queries</strong> — all successful exploratory queries from the scratch-pad, in the order they were run.</li>
+  </ul>
+
+  <h3>How to interpret the score</h3>
+  <table>
+    <thead>
+      <tr><th>Status</th><th>What it means for your evaluation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-pass">PASS</span></td>
+        <td>The candidate's final submitted SQL produced the exact correct result set. Consider this a solid signal.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-fail">FAIL</span></td>
+        <td>The query ran but the result was wrong. Read the SQL they wrote — a near-miss on a hard question is very different from a completely wrong approach on an easy one.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-error">ERROR</span></td>
+        <td>A syntax or runtime error. This often means the candidate had the right idea but didn't finish debugging. Look at the SQL to judge intent.</td>
+      </tr>
+      <tr>
+        <td>NOT ATTEMPTED</td>
+        <td>No SQL was run for this question. Could be a time management issue or they skipped it intentionally.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="tip">
+    <strong>The playground queries tell the full story.</strong> A candidate who explored the data methodically before writing answers — even if they didn't all PASS — is demonstrating strong analytical process. Review the playground section carefully.
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="guidance">8 · Guidance you can give candidates</h2>
+
+  <p>These are things you are permitted to tell a candidate if they ask during the test:</p>
+
+  <table>
+    <thead>
+      <tr><th>Candidate asks…</th><th>You can say…</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>"What tables are in the database?"</td>
+        <td>Point them to the Schema Reference panel on the right side of the tool — it lists all tables and columns.</td>
+      </tr>
+      <tr>
+        <td>"Can I see example data?"</td>
+        <td>Yes — tell them to run <code>SELECT * FROM table_name LIMIT 10</code> in the playground to inspect any table.</td>
+      </tr>
+      <tr>
+        <td>"My query is blocked / NOT PERMITTED"</td>
+        <td>Only SELECT queries and CREATE TEMP TABLE are allowed. Tell them to rewrite as a SELECT.</td>
+      </tr>
+      <tr>
+        <td>"My answer looks right but it keeps failing"</td>
+        <td>Tell them to check that their selected columns match the Expected Columns list in the right order, and that they are not selecting extra columns.</td>
+      </tr>
+      <tr>
+        <td>"Can I use CTEs / window functions?"</td>
+        <td>Yes — all standard SQLite features are supported, including CTEs and window functions.</td>
+      </tr>
+      <tr>
+        <td>"Is there a time limit?"</td>
+        <td>Tell them however much time remains in the session.</td>
+      </tr>
+    </tbody>
+  </table>
+
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <h2 id="troubleshooting">9 · Troubleshooting</h2>
+
+  <h3>The file won't open</h3>
+  <ul>
+    <li>Make sure they are double-clicking the file (not trying to open it from inside an email without saving first).</li>
+    <li>Any modern browser works: Chrome, Firefox, Safari, Edge. Internet Explorer is not supported.</li>
+    <li>On macOS, if a security dialog appears saying the file is from an "unidentified developer", they should right-click → Open to bypass it.</li>
+  </ul>
+
+  <h3>The screen shows "SESSION LOCKED" immediately on open</h3>
+  <p>This means the candidate (or someone else on that browser) already completed this assessment file previously. The lock is stored in the browser. Options:</p>
+  <ul>
+    <li>Have them open the file in a different browser (e.g. Chrome instead of Safari).</li>
+    <li>Have them open the file in a private/incognito window.</li>
+    <li>If neither is possible, contact whoever manages the assessment to get a fresh copy of the file.</li>
+  </ul>
+
+  <h3>SQL queries are not running — "Database not yet initialized"</h3>
+  <p>The SQL engine loads when the test begins. If this error appears, wait a few seconds and try again. On slow machines this can take 5–10 seconds. If it persists, refreshing the page will clear the session and require them to start over — so only do that if the test has not yet started.</p>
+
+  <h3>The results file was not downloaded</h3>
+  <p>See <a href="#results">Section 5</a>. The download usually completes silently. Ask them to check their Downloads folder before concluding the file is missing.</p>
+
+  <h3>Candidate can't find the Finish Work button</h3>
+  <p>It is at the bottom of the left sidebar. If the sidebar is collapsed, they need to click the <strong>›</strong> arrow at the top-left to expand it.</p>
+
+  <h3>The tool looks broken or unstyled</h3>
+  <p>This can happen if the browser is in an unusual mode (e.g. Reader Mode). Ask the candidate to exit Reader Mode and reload the file.</p>
+
+</div>
+</body>
+</html>

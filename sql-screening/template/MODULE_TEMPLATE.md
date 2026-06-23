@@ -273,6 +273,7 @@ These rules apply to all values written into CSV files and any string literals i
 - Count must equal `module.json.questionCount`
 - IDs must be `q1`, `q2`, … `qN` (matching solution delimiters)
 - `expectedColumns` is a positional list — grading matches column values by position, not name
+- **Question prompts must not imply or require a specific row order.** The grading engine sorts all result rows before comparing, so row order is never part of the correct answer. Do not write prompts like "list the top 5 customers ordered by spend" or "return results sorted by date". Rephrase as "return the 5 customers with the highest spend" or "return all transactions in the past 30 days". The candidate may use ORDER BY for readability, but it must have no bearing on whether their answer is correct.
 
 ### `solutions.sql`
 ```sql
@@ -303,7 +304,7 @@ Sections:
 
 - **Never include plaintext expected results** or answer values anywhere in the output
 - **Never use non-SQLite SQL syntax** (no DuckDB, SQL Server, PostgreSQL, or MySQL-specific features)
-- **Never create row-order-dependent answers** (the framework ignores ORDER BY when grading)
+- **Never create row-order-dependent answers** — this applies to both question prompts and solutions. Do not phrase prompts in a way that implies the order of rows matters (e.g. "list in descending order of…", "return the first N…sorted by…"). The grading engine sorts all result rows before comparing, so ordering is never evaluated.
 - **Never skip a required file** — all seven must be present
 - **Never let questionCount mismatch** the actual number of entries in questions.json
 - **Never use INTERVAL, GENERATE_SERIES, UNNEST, BOOLEAN type, or DATE literals**
