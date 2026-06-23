@@ -8,6 +8,7 @@
   function classify(sqlStr) {
     var s = sqlStr.trim().replace(/\s+/g, ' ');
     if (/^SELECT\b/i.test(s)) return 'ALLOWED';
+    if (/^WITH\s+(RECURSIVE\s+)?\w/i.test(s)) return 'ALLOWED';
     if (/CREATE\s+(TEMP|TEMPORARY)\s+TABLE/i.test(s)) return 'ALLOWED';
     return 'BLOCKED';
   }
