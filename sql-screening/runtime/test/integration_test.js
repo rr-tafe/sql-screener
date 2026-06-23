@@ -228,13 +228,15 @@ runSolutionTests().then(() => {
   console.log(`\n──────────────────────────────────`);
   console.log(`integration_test.js: ${passed} passed, ${failed} failed`);
   if (failed > 0) {
-    process.exit(1);
+    // Prefer exitCode over process.exit() to allow Node/libuv to tear down
+    // async resources cleanly on Windows.
+    process.exitCode = 1;
   } else {
     console.log('All integration tests passed.');
-    process.exit(0);
+    process.exitCode = 0;
   }
 }).catch(e => {
   console.error(`Unexpected error in integration_test: ${e.message}`);
   console.error(e.stack);
-  process.exit(1);
+  process.exitCode = 1;
 });

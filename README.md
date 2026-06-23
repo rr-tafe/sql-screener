@@ -193,6 +193,23 @@ node sql-screening/runtime/test/feature_test.js --module=<module-id>
 
 ---
 
+## Cross-platform compatibility
+
+Compatibility is now verified automatically in CI on Linux, macOS, and
+Windows via the workflow at `.github/workflows/cross-platform-build.yml`.
+
+The workflow installs Node.js and Python, then runs:
+
+```bash
+cd sql-screening/builder
+python builder.py --module modules/digital-bank-marketing-analytics
+```
+
+This gives an automated guard that build + integration/feature tests remain
+portable across all three major platforms.
+
+---
+
 ## Troubleshooting
 
 **`node` not found during build**

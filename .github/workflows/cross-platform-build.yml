@@ -1,0 +1,43 @@
+name: Cross-Platform Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-module:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11"]
+        node-version: ["20"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: sql-screening/runtime/package-lock.json
+
+      - name: Install runtime dependencies
+        working-directory: sql-screening/runtime
+        run: npm ci
+
+      - name: Build sample module
+        working-directory: sql-screening/builder
+        run: python builder.py --module modules/digital-bank-marketing-analytics
