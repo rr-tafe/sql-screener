@@ -172,6 +172,7 @@
     wireBottomButtons(questions, moduleTitle, moduleVersion);
     wireFnRefSection();
     wireQueryHistory();
+    wireThemeToggle();
   }
 
   // ============================================================
@@ -776,6 +777,36 @@
         runPlayground();
         var scroll = document.querySelector('.right-panel-scroll');
         if (scroll) scroll.scrollTop = 0;
+      });
+    });
+  }
+
+  // ============================================================
+  // Theme toggle (light ↔ dark)
+  // ============================================================
+  function wireThemeToggle() {
+    var btn = document.getElementById('theme-toggle-btn');
+    if (!btn) return;
+
+    var isDark = false;
+
+    btn.addEventListener('click', function () {
+      isDark = !isDark;
+      if (isDark) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        btn.innerHTML = '&#9790;'; // moon
+        btn.setAttribute('aria-label', 'Switch to light mode');
+        btn.setAttribute('title', 'Switch to light mode');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        btn.innerHTML = '&#9788;'; // sun
+        btn.setAttribute('aria-label', 'Switch to dark mode');
+        btn.setAttribute('title', 'Switch to dark mode');
+      }
+      Object.keys(editors).forEach(function (key) {
+        if (editors[key] && editors[key].setTheme) {
+          editors[key].setTheme(isDark);
+        }
       });
     });
   }

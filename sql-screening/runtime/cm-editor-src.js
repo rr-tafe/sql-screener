@@ -10,7 +10,6 @@ import initSqlJs from 'sql.js';
 
 /**
  * Dark theme — editor chrome (gutters, selection, cursor, tooltips).
- * Token colors are handled separately by sqlHighlightStyle below.
  */
 const darkTheme = EditorView.theme(
   {
@@ -64,9 +63,63 @@ const darkTheme = EditorView.theme(
 );
 
 /**
- * Syntax token colors via CM6 HighlightStyle (maps @lezer tags → CSS).
+ * Light theme — editor chrome.
  */
-const sqlHighlightStyle = HighlightStyle.define([
+const lightTheme = EditorView.theme(
+  {
+    '&': {
+      color: '#1a1a1a',
+      backgroundColor: '#f5f3ee',
+      height: '100%',
+    },
+    '.cm-content': {
+      caretColor: '#1a5fba',
+      fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', 'Menlo', monospace",
+      fontSize: '13px',
+      padding: '4px 0',
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: '#1a5fba',
+    },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+      backgroundColor: '#b8d0f0',
+    },
+    '.cm-gutters': {
+      backgroundColor: '#ece9e4',
+      color: '#999',
+      border: 'none',
+      borderRight: '1px solid #d5d1cb',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: '#e0ddd8',
+    },
+    '.cm-activeLine': {
+      backgroundColor: '#e8e5e0',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      padding: '0 8px 0 4px',
+      minWidth: '32px',
+    },
+    '.cm-tooltip': {
+      backgroundColor: '#f0ede8',
+      border: '1px solid #c5c1bb',
+      color: '#1a1a1a',
+    },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+      backgroundColor: '#b8d0f0',
+      color: '#1a1a1a',
+    },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
+      padding: '2px 8px',
+    },
+  },
+  { dark: false }
+);
+
+/**
+ * Dark syntax token colors via CM6 HighlightStyle.
+ */
+const darkHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword,             color: '#569cd6' },
   { tag: tags.operator,            color: '#d4d4d4' },
   { tag: tags.number,              color: '#b5cea8' },
@@ -83,8 +136,26 @@ const sqlHighlightStyle = HighlightStyle.define([
 ]);
 
 /**
+ * Light syntax token colors — VS Code Light+ palette.
+ */
+const lightHighlightStyle = HighlightStyle.define([
+  { tag: tags.keyword,             color: '#0000ff' },
+  { tag: tags.operator,            color: '#333333' },
+  { tag: tags.number,              color: '#098658' },
+  { tag: tags.string,              color: '#a31515' },
+  { tag: tags.comment,             color: '#008000', fontStyle: 'italic' },
+  { tag: tags.typeName,            color: '#267f99' },
+  { tag: tags.name,                color: '#001080' },
+  { tag: tags.variableName,        color: '#001080' },
+  { tag: tags.propertyName,        color: '#001080' },
+  { tag: tags.punctuation,         color: '#333333' },
+  { tag: tags.null,                color: '#0000ff' },
+  { tag: tags.bool,                color: '#0000ff' },
+  { tag: tags.special(tags.name),  color: '#795e26' },
+]);
+
+/**
  * Format the given SQL string using sql-formatter.
- * Returns formatted string, or original on error.
  */
 function formatSQL(sqlText) {
   try {
@@ -97,13 +168,14 @@ function formatSQL(sqlText) {
 /**
  * createEditor — factory function for CodeMirror 6 SQL editors.
  *
- * @param {HTMLElement} container  - DOM element to mount into
+ * @param {HTMLElement} container
  * @param {object}      options
  *   options.schema    {tables: {tableName: [col1, col2, ...]}}
  *   options.onFormat  optional callback called after formatting
  *   options.readOnly  boolean (default false)
+ *   options.dark      boolean (default false — light mode)
  *
- * @returns {{ view, getContent, setContent, format }}
+ * @returns {{ view, getContent, setContent, format, setTheme }}
  */
 function createEditor(container, options) {
   options = options || {};
@@ -111,8 +183,6 @@ function createEditor(container, options) {
   var schema = options.schema || { tables: {} };
   var readOnly = !!options.readOnly;
 
-  // Build schema object for @codemirror/lang-sql autocomplete
-  // Expected shape: { [tableName]: [col1, col2, ...] }
   var sqlSchema = {};
   if (schema && schema.tables) {
     Object.keys(schema.tables).forEach(function (tableName) {
@@ -121,8 +191,9 @@ function createEditor(container, options) {
   }
 
   var readOnlyCompartment = new Compartment();
+  var themeCompartment    = new Compartment();
+  var highlightCompartment = new Compartment();
 
-  // Tab → 2 spaces keymap
   var twoSpacesKeymap = {
     key: 'Tab',
     run: function (view) {
@@ -131,7 +202,6 @@ function createEditor(container, options) {
     },
   };
 
-  // Shift+Alt+F → format
   var formatKeymap = {
     key: 'Shift-Alt-f',
     run: function (view) {
@@ -153,6 +223,8 @@ function createEditor(container, options) {
     }
   }
 
+  var isDark = !!options.dark;
+
   var extensions = [
     history(),
     lineNumbers(),
@@ -170,8 +242,8 @@ function createEditor(container, options) {
       dialect: SQLite,
       schema: sqlSchema,
     }),
-    syntaxHighlighting(sqlHighlightStyle),
-    darkTheme,
+    themeCompartment.of(isDark ? darkTheme : lightTheme),
+    highlightCompartment.of(syntaxHighlighting(isDark ? darkHighlightStyle : lightHighlightStyle)),
     EditorView.lineWrapping,
     readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),
   ];
@@ -189,9 +261,6 @@ function createEditor(container, options) {
     parent: container,
   });
 
-  // Clicking in the empty space below the editor content lands on `container`,
-  // not on the editor DOM. Focus the editor so the user doesn't have to aim
-  // at the single line of text at the top of the box.
   container.addEventListener('click', function (e) {
     if (!view.dom.contains(e.target)) {
       view.focus();
@@ -212,11 +281,23 @@ function createEditor(container, options) {
     doFormat(view);
   }
 
+  function setTheme(dark) {
+    view.dispatch({
+      effects: [
+        themeCompartment.reconfigure(dark ? darkTheme : lightTheme),
+        highlightCompartment.reconfigure(
+          syntaxHighlighting(dark ? darkHighlightStyle : lightHighlightStyle)
+        ),
+      ],
+    });
+  }
+
   return {
     view: view,
     getContent: getContent,
     setContent: setContent,
     format: doFormatPublic,
+    setTheme: setTheme,
   };
 }
 

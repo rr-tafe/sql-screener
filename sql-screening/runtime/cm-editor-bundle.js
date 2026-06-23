@@ -1,4 +1,4 @@
-var CMEditorExports = (() => {
+(() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -28,7 +28,6 @@ var CMEditorExports = (() => {
     isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
     mod
   ));
-  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
   // node_modules/nearley/lib/nearley.js
   var require_nearley = __commonJS({
@@ -2585,13 +2584,6 @@ var CMEditorExports = (() => {
         exports["Module"] = initSqlJs2;
       }
     }
-  });
-
-  // cm-editor-src.js
-  var cm_editor_src_exports = {};
-  __export(cm_editor_src_exports, {
-    createEditor: () => createEditor,
-    initSqlJs: () => import_sql.default
   });
 
   // node_modules/@marijn/find-cluster-break/src/index.js
@@ -44713,7 +44705,57 @@ ${JSON.stringify(results, void 0, 2)}`);
     },
     { dark: true }
   );
-  var sqlHighlightStyle = HighlightStyle.define([
+  var lightTheme = EditorView.theme(
+    {
+      "&": {
+        color: "#1a1a1a",
+        backgroundColor: "#f5f3ee",
+        height: "100%"
+      },
+      ".cm-content": {
+        caretColor: "#1a5fba",
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', 'Menlo', monospace",
+        fontSize: "13px",
+        padding: "4px 0"
+      },
+      ".cm-cursor, .cm-dropCursor": {
+        borderLeftColor: "#1a5fba"
+      },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+        backgroundColor: "#b8d0f0"
+      },
+      ".cm-gutters": {
+        backgroundColor: "#ece9e4",
+        color: "#999",
+        border: "none",
+        borderRight: "1px solid #d5d1cb"
+      },
+      ".cm-activeLineGutter": {
+        backgroundColor: "#e0ddd8"
+      },
+      ".cm-activeLine": {
+        backgroundColor: "#e8e5e0"
+      },
+      ".cm-lineNumbers .cm-gutterElement": {
+        padding: "0 8px 0 4px",
+        minWidth: "32px"
+      },
+      ".cm-tooltip": {
+        backgroundColor: "#f0ede8",
+        border: "1px solid #c5c1bb",
+        color: "#1a1a1a"
+      },
+      ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+        backgroundColor: "#b8d0f0",
+        color: "#1a1a1a"
+      },
+      ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+        padding: "2px 8px"
+      }
+    },
+    { dark: false }
+  );
+  var darkHighlightStyle = HighlightStyle.define([
     { tag: tags.keyword, color: "#569cd6" },
     { tag: tags.operator, color: "#d4d4d4" },
     { tag: tags.number, color: "#b5cea8" },
@@ -44727,6 +44769,21 @@ ${JSON.stringify(results, void 0, 2)}`);
     { tag: tags.null, color: "#569cd6" },
     { tag: tags.bool, color: "#569cd6" },
     { tag: tags.special(tags.name), color: "#dcdcaa" }
+  ]);
+  var lightHighlightStyle = HighlightStyle.define([
+    { tag: tags.keyword, color: "#0000ff" },
+    { tag: tags.operator, color: "#333333" },
+    { tag: tags.number, color: "#098658" },
+    { tag: tags.string, color: "#a31515" },
+    { tag: tags.comment, color: "#008000", fontStyle: "italic" },
+    { tag: tags.typeName, color: "#267f99" },
+    { tag: tags.name, color: "#001080" },
+    { tag: tags.variableName, color: "#001080" },
+    { tag: tags.propertyName, color: "#001080" },
+    { tag: tags.punctuation, color: "#333333" },
+    { tag: tags.null, color: "#0000ff" },
+    { tag: tags.bool, color: "#0000ff" },
+    { tag: tags.special(tags.name), color: "#795e26" }
   ]);
   function formatSQL(sqlText) {
     try {
@@ -44746,6 +44803,8 @@ ${JSON.stringify(results, void 0, 2)}`);
       });
     }
     var readOnlyCompartment = new Compartment();
+    var themeCompartment = new Compartment();
+    var highlightCompartment = new Compartment();
     var twoSpacesKeymap = {
       key: "Tab",
       run: function(view2) {
@@ -44772,6 +44831,7 @@ ${JSON.stringify(results, void 0, 2)}`);
         options.onFormat(formatted);
       }
     }
+    var isDark = !!options.dark;
     var extensions = [
       history(),
       lineNumbers(),
@@ -44789,8 +44849,8 @@ ${JSON.stringify(results, void 0, 2)}`);
         dialect: SQLite,
         schema: sqlSchema
       }),
-      syntaxHighlighting(sqlHighlightStyle),
-      darkTheme2,
+      themeCompartment.of(isDark ? darkTheme2 : lightTheme),
+      highlightCompartment.of(syntaxHighlighting(isDark ? darkHighlightStyle : lightHighlightStyle)),
       EditorView.lineWrapping,
       readOnlyCompartment.of(EditorState.readOnly.of(readOnly2))
     ];
@@ -44819,11 +44879,22 @@ ${JSON.stringify(results, void 0, 2)}`);
     function doFormatPublic() {
       doFormat(view);
     }
+    function setTheme(dark) {
+      view.dispatch({
+        effects: [
+          themeCompartment.reconfigure(dark ? darkTheme2 : lightTheme),
+          highlightCompartment.reconfigure(
+            syntaxHighlighting(dark ? darkHighlightStyle : lightHighlightStyle)
+          )
+        ]
+      });
+    }
     return {
       view,
       getContent,
       setContent,
-      format: doFormatPublic
+      format: doFormatPublic,
+      setTheme
     };
   }
   if (typeof window !== "undefined") {
@@ -44832,5 +44903,4 @@ ${JSON.stringify(results, void 0, 2)}`);
       initSqlJs: import_sql.default
     };
   }
-  return __toCommonJS(cm_editor_src_exports);
 })();

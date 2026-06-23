@@ -1,9 +1,54 @@
 /* ============================================================
-   SQL Screening Assessment — Dark Professional Theme
+   SQL Screening Assessment — Theme-aware styles
+   Default: light mode. Dark mode via html[data-theme="dark"].
    ============================================================ */
 
-/* Custom properties */
+/* ── Light mode (default) ── */
 :root {
+  --color-bg:           #f0ede8;
+  --color-panel:        #e8e5e0;
+  --color-sidebar:      #dedad5;
+  --color-border:       #c5c1bb;
+  --color-text:         #1a1a1a;
+  --color-text-muted:   #5e5e5e;
+  --color-accent:       #1a5fba;
+  --color-accent-hover: #144d99;
+
+  /* Badge colors */
+  --badge-pass-text:    #15803d;
+  --badge-pass-bg:      #f0fdf4;
+  --badge-pass-border:  #86efac;
+  --badge-fail-text:    #b91c1c;
+  --badge-fail-bg:      #fef2f2;
+  --badge-fail-border:  #fca5a5;
+  --badge-error-text:   #b45309;
+  --badge-error-bg:     #fffbeb;
+  --badge-error-border: #fcd34d;
+  --badge-np-text:      #555;
+  --badge-np-bg:        #e5e2de;
+  --badge-np-border:    #aaa;
+
+  /* Extra vars for previously hardcoded dark values */
+  --color-editor-bg:          #f5f3ee;
+  --color-table-header-bg:    #ccc9c4;
+  --color-table-header-hover: #bfbbb5;
+  --color-row-stripe:         rgba(0, 0, 0, 0.025);
+  --color-row-border:         rgba(0, 0, 0, 0.06);
+  --color-hover-bg:           #d0ccc7;
+  --color-scrollbar-thumb:    #b0aba5;
+  --color-scrollbar-hover:    #a09b95;
+
+  --sidebar-width:      240px;
+  --sidebar-collapsed:  48px;
+  --right-panel-width:  320px;
+  --transition-speed:   0.2s;
+
+  --font-mono: 'Fira Code', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Dark mode override ── */
+html[data-theme="dark"] {
   --color-bg:           #1a1a1a;
   --color-panel:        #242424;
   --color-sidebar:      #2c2c2c;
@@ -13,7 +58,6 @@
   --color-accent:       #4a9eff;
   --color-accent-hover: #6ab0ff;
 
-  /* Badge colors — text on background */
   --badge-pass-text:    #6ed96e;
   --badge-pass-bg:      #1e3a1e;
   --badge-pass-border:  #2d7a2d;
@@ -27,13 +71,14 @@
   --badge-np-bg:        #2a2a2a;
   --badge-np-border:    #666;
 
-  --sidebar-width:      240px;
-  --sidebar-collapsed:  48px;
-  --right-panel-width:  320px;
-  --transition-speed:   0.2s;
-
-  --font-mono: 'Fira Code', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
-  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-editor-bg:          #1e1e1e;
+  --color-table-header-bg:    #333;
+  --color-table-header-hover: #3c3c3c;
+  --color-row-stripe:         rgba(255, 255, 255, 0.025);
+  --color-row-border:         rgba(255, 255, 255, 0.04);
+  --color-hover-bg:           #333;
+  --color-scrollbar-thumb:    #444;
+  --color-scrollbar-hover:    #555;
 }
 
 /* ============================================================
@@ -199,15 +244,14 @@ button:disabled {
 }
 
 .btn-run {
-  background: #1e3a1e;
-  color: #6ed96e;
-  border-color: #2d7a2d;
+  background: var(--badge-pass-bg);
+  color: var(--badge-pass-text);
+  border-color: var(--badge-pass-border);
   padding: 0.3rem 0.75rem;
 }
 
 .btn-run:hover:not(:disabled) {
-  background: #254d25;
-  border-color: #3a9a3a;
+  filter: brightness(0.95);
 }
 
 .btn-format {
@@ -218,14 +262,14 @@ button:disabled {
 }
 
 .btn-format:hover:not(:disabled) {
-  background: #383838;
+  background: var(--color-hover-bg);
   color: var(--color-text);
 }
 
 .btn-finish-work {
-  background: #3a1e1e;
-  color: #e87070;
-  border: 1px solid #cc4444;
+  background: var(--badge-fail-bg);
+  color: var(--badge-fail-text);
+  border: 1px solid var(--badge-fail-border);
   padding: 0.4rem 0.75rem;
   width: 100%;
   font-size: 0.8rem;
@@ -236,8 +280,34 @@ button:disabled {
 }
 
 .btn-finish-work:hover {
-  background: #4d2222;
-  border-color: #e85050;
+  filter: brightness(0.95);
+}
+
+/* ============================================================
+   Theme toggle button
+   ============================================================ */
+
+.theme-toggle-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--transition-speed), color var(--transition-speed), border-color var(--transition-speed);
+}
+
+.theme-toggle-btn:hover {
+  background: var(--color-hover-bg);
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
 }
 
 /* ============================================================
@@ -277,7 +347,7 @@ button:disabled {
 
 .sidebar-toggle:hover {
   color: var(--color-text);
-  background: #333;
+  background: var(--color-hover-bg);
 }
 
 .sidebar-content {
@@ -344,7 +414,7 @@ button:disabled {
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-row-stripe);
   color: var(--color-text);
   text-decoration: none;
   border-left-color: var(--color-border);
@@ -472,9 +542,9 @@ button:disabled {
   text-transform: capitalize;
 }
 
-.difficulty-easy   { background: #1e3a1e; color: #6ed96e; border: 1px solid #2d7a2d; }
-.difficulty-medium { background: #3a2a0a; color: #e8a050; border: 1px solid #cc7700; }
-.difficulty-hard   { background: #3a1e1e; color: #e87070; border: 1px solid #cc4444; }
+.difficulty-easy   { background: var(--badge-pass-bg); color: var(--badge-pass-text); border: 1px solid var(--badge-pass-border); }
+.difficulty-medium { background: var(--badge-error-bg); color: var(--badge-error-text); border: 1px solid var(--badge-error-border); }
+.difficulty-hard   { background: var(--badge-fail-bg); color: var(--badge-fail-text); border: 1px solid var(--badge-fail-border); }
 
 .question-prompt {
   font-size: 0.95rem;
@@ -522,7 +592,7 @@ button:disabled {
   border: 1px solid var(--color-border);
   border-radius: 4px;
   overflow: hidden;
-  background: #1e1e1e;
+  background: var(--color-editor-bg);
 }
 
 .cm-editor-container .cm-editor {
@@ -605,7 +675,7 @@ button:disabled {
 }
 
 .results-table thead th {
-  background: #333;
+  background: var(--color-table-header-bg);
   color: var(--color-text);
   padding: 0.4rem 0.6rem;
   text-align: left;
@@ -618,7 +688,7 @@ button:disabled {
 }
 
 .results-table thead th:hover {
-  background: #3c3c3c;
+  background: var(--color-table-header-hover);
   color: var(--color-accent);
 }
 
@@ -626,7 +696,7 @@ button:disabled {
 .results-table thead th.sort-desc::after { content: ' ▼'; font-size: 0.65rem; color: var(--color-accent); }
 
 .results-table tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--color-row-stripe);
 }
 
 .results-table tbody tr:hover {
@@ -635,7 +705,7 @@ button:disabled {
 
 .results-table tbody td {
   padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--color-row-border);
   color: var(--color-text);
   max-width: 300px;
   overflow: hidden;
@@ -668,7 +738,7 @@ button:disabled {
 }
 
 .pagination-controls button:hover:not(:disabled) {
-  background: #333;
+  background: var(--color-hover-bg);
   color: var(--color-text);
 }
 
@@ -825,6 +895,12 @@ button:disabled {
   color: var(--color-text-muted);
 }
 
+.right-panel-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .schema-toggle-btn {
   background: none;
   border: none;
@@ -958,12 +1034,12 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #444;
+  background: var(--color-scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--color-scrollbar-hover);
 }
 
 /* ============================================================
@@ -1082,7 +1158,7 @@ button:disabled {
 
 .fn-ref-item {
   padding: 0.35rem 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--color-row-border);
 }
 
 .fn-ref-item:last-child {
@@ -1112,7 +1188,7 @@ button:disabled {
 .fn-ref-ex {
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  color: #888;
+  color: var(--color-text-muted);
   margin-top: 0.15rem;
 }
 
@@ -1139,7 +1215,7 @@ button:disabled {
   align-items: flex-start;
   gap: 0.4rem;
   padding: 0.3rem 0.75rem;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--color-row-border);
 }
 
 .qh-item:last-child {
