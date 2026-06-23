@@ -13,6 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       PYTHONENCODING: utf-8
+      PYTHONIOENCODING: utf-8
     strategy:
       fail-fast: false
       matrix:
