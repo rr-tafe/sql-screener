@@ -40,4 +40,4 @@ jobs:
 
       - name: Build sample module
         working-directory: sql-screening/builder
-        run: python builder.py --module modules/digital-bank-marketing-analytics
+        run: python builder.py --module modules/ci-test
