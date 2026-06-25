@@ -14,6 +14,7 @@ sql-screening/
 ├── runtime/              Shared browser runtime (JS, CSS, HTML template)
 ├── modules/              Source content for each assessment module
 ├── dist/                 Built assessment HTML files (ready to distribute)
+├── docs/                 Guides for screeners, candidates, and module builders
 └── template/             LLM prompt template for authoring new modules
 
 specs/                    Internal design specs and development history
@@ -128,6 +129,11 @@ sql-screening/
 ├── dist/                       Built assessment files (committed)
 │   └── <module-id>.html
 │
+├── docs/
+│   ├── screener-guide.html     Instructions for the interviewer running the session
+│   ├── candidate-guide.html    Instructions to send to candidates before the test
+│   └── module-builder-guide.html  Reference for authoring new modules
+│
 └── template/
     └── MODULE_TEMPLATE.md      LLM prompt for authoring new modules
 ```
@@ -160,8 +166,19 @@ Send the candidate only the `sql-screening/dist/<module-id>.html` file. They
 open it in any modern browser (Chrome, Firefox, Safari, Edge). No installation
 required. No internet connection required after the file is received.
 
+When they click **Finish Work**, a results HTML file downloads to their machine.
+They send that file to you, and you open it in a browser to review their answers.
+
 Keep the `sql-screening/dist/<module-id>-README.md` for yourself — it contains
 the question guide and interviewer notes.
+
+The `sql-screening/docs/` folder contains three standalone HTML guides:
+
+| File | For |
+|---|---|
+| `screener-guide.html` | You — how to set up, run, and debrief the session |
+| `candidate-guide.html` | The candidate — send this alongside the assessment file |
+| `module-builder-guide.html` | Whoever is authoring or building new modules |
 
 ---
 
