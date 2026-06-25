@@ -48,14 +48,6 @@
     var questions      = typeof QUESTIONS_JSON      !== 'undefined' ? QUESTIONS_JSON      : [];
     var answerHashes   = typeof ANSWER_HASHES_JSON  !== 'undefined' ? ANSWER_HASHES_JSON  : {};
 
-    // Check for existing lock before showing any UI
-    var _mt = typeof MODULE_TITLE   !== 'undefined' ? MODULE_TITLE   : '';
-    var _mv = typeof MODULE_VERSION !== 'undefined' ? MODULE_VERSION : '';
-    var _lockRaw = null;
-    try { _lockRaw = localStorage.getItem(getLockKey(_mt, _mv)); } catch (e) {}
-    if (_lockRaw) {
-      try { showLockedScreen(JSON.parse(_lockRaw)); return; } catch (e) {}
-    }
     schema             = typeof SQL_SCHEMA_JSON      !== 'undefined' ? SQL_SCHEMA_JSON      : { tables: {} };
     var moduleTitle    = typeof MODULE_TITLE         !== 'undefined' ? MODULE_TITLE         : 'SQL Assessment';
     var moduleVersion  = typeof MODULE_VERSION       !== 'undefined' ? MODULE_VERSION       : '';
@@ -824,107 +816,24 @@
   }
 
   // ============================================================
-  // Integrity fingerprint — tamper-evidence for the results report
+  // Finish Work — download results
   // ============================================================
-
-  // Serialise the data that matters for assessment integrity into a
-  // deterministic JSON string. This string is both embedded in the
-  // report (so the screener can re-verify it) and hashed to produce
-  // a short fingerprint displayed on the locked screen.
-  function buildIntegrityPayload(questions, lockData) {
-    var qData = questions.map(function (q) {
-      return {
-        id:     q.id,
-        status: questionStatuses[q.id] || 'not-attempted',
-        sql:    editors[q.id] ? editors[q.id].getContent().trim() : ''
-      };
-    });
-    return JSON.stringify({
-      candidateName: lockData.candidateName,
-      moduleTitle:   lockData.moduleTitle,
-      moduleVersion: lockData.moduleVersion,
-      completedAt:   lockData.completedAt,
-      elapsed:       lockData.elapsed,
-      questions:     qData,
-      notes:         document.getElementById('exploration-notes').value,
-      playground:    playgroundSuccessHistory.slice()
-    });
-  }
-
-  // SHA-256 of the payload string → first 16 hex chars → XXXX-XXXX-XXXX-XXXX.
-  function computeFingerprint(payloadStr) {
-    var enc = new TextEncoder();
-    return crypto.subtle.digest('SHA-256', enc.encode(payloadStr)).then(function (buf) {
-      var hex = Array.from(new Uint8Array(buf))
-        .map(function (b) { return b.toString(16).padStart(2, '0'); })
-        .join('');
-      var s = hex.slice(0, 16).toUpperCase();
-      return s.slice(0, 4) + '-' + s.slice(4, 8) + '-' + s.slice(8, 12) + '-' + s.slice(12, 16);
-    });
-  }
-
-  // ============================================================
-  // Finish Work — lock the session
-  // ============================================================
-  function getLockKey(title, version) {
-    return 'sql_screening_lock__' +
-      (title || '').replace(/[^a-zA-Z0-9]/g, '_') + '__' +
-      (version || '').replace(/[^a-zA-Z0-9]/g, '_');
-  }
-
-  function showLockedScreen(lockData) {
-    document.getElementById('screen1').classList.add('hidden');
-    var s2 = document.getElementById('screen2');
-    if (s2) s2.classList.add('hidden');
-    var screen = document.getElementById('screen-locked');
-    document.getElementById('locked-candidate').textContent = lockData.candidateName || '';
-    document.getElementById('locked-time').textContent =
-      'Completed: ' + (lockData.completedAt ? new Date(lockData.completedAt).toLocaleString() : '');
-    document.getElementById('locked-elapsed').textContent =
-      lockData.elapsed ? 'Total time: ' + lockData.elapsed : '';
-    var fpEl = document.getElementById('locked-fingerprint-code');
-    if (fpEl) fpEl.textContent = lockData.fingerprint || '—';
-    screen.classList.remove('hidden');
-  }
-
   function finishWork(questions, moduleTitle, moduleVersion) {
     var confirmed = window.confirm(
-      'Are you sure you want to complete the assessment?\n\n' +
-      'The assessment will be locked after this, and you won\'t be able to go back.\n' +
-      'You will only be able to export your results.'
+      'Download your results file?\n\n' +
+      'The file will be saved to your downloads folder. ' +
+      'Share it with your recruiter when you are done.'
     );
     if (!confirmed) return;
 
     clearInterval(timerInterval);
-
-    var lockData = {
-      candidateName: candidateName,
-      completedAt:   new Date().toISOString(),
-      elapsed:       getElapsedString(),
-      moduleTitle:   moduleTitle,
-      moduleVersion: moduleVersion
-    };
-
-    var payloadStr = buildIntegrityPayload(questions, lockData);
-
-    computeFingerprint(payloadStr).then(function (fingerprint) {
-      lockData.fingerprint = fingerprint;
-
-      try {
-        localStorage.setItem(getLockKey(moduleTitle, moduleVersion), JSON.stringify(lockData));
-      } catch (e) {
-        // localStorage may be unavailable; lock visually regardless
-      }
-
-      showLockedScreen(lockData);
-      exportResults(questions, moduleTitle, moduleVersion, fingerprint, payloadStr);
-    });
+    exportResults(questions, moduleTitle, moduleVersion);
   }
 
   // ============================================================
   // Export Results — HTML report + print dialog
   // ============================================================
-  function exportResults(questions, moduleTitle, moduleVersion, fingerprint, payloadStr) {
+  function exportResults(questions, moduleTitle, moduleVersion) {
     var completionTime = new Date();
     var elapsed = getElapsedString();
 
@@ -957,13 +866,6 @@
     html += '.playground-section { border-top: 2px solid #ccc; margin-top: 2rem; padding-top: 1rem; }';
     html += '@media print { .playground-section { page-break-before: always; } }';
     html += '</style></head><body>';
-
-    // Integrity fingerprint box — always rendered at the very top of the report.
-    html += '<div style="font-family:-apple-system,sans-serif;background:#f8fafc;border:2px solid #334155;border-radius:8px;padding:0.85rem 1.1rem;margin-bottom:1.5rem;">';
-    html += '<div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;margin-bottom:0.3rem;">Report Integrity Fingerprint</div>';
-    html += '<div id="report-fingerprint-code" style="font-family:\'SFMono-Regular\',Menlo,monospace;font-size:1.15rem;font-weight:700;letter-spacing:0.18em;color:#0f172a;">' + escapeHtml(fingerprint || '—') + '</div>';
-    html += '<div id="integrity-status" style="font-size:0.8rem;margin-top:0.45rem;padding:0.3rem 0.6rem;border-radius:4px;border:1px solid #e2e8f0;color:#64748b;background:#fff;">Verifying…</div>';
-    html += '</div>';
 
     // Header
     html += '<h1>' + escapeHtml(moduleTitle) + ' — Assessment Results</h1>';
@@ -1030,34 +932,6 @@
     }
     html += '</div></div>';
 
-    // Embed the integrity payload as JSON so the self-check script can re-hash it.
-    // Escape </ sequences so the JSON cannot prematurely close the script tag.
-    if (payloadStr && fingerprint) {
-      var safePayload = payloadStr.replace(/<\//g, '<\\/');
-      html += '<script type="application/json" id="integrity-payload">' + safePayload + '<\/script>';
-      html += '<script>(function(){' +
-        'var el=document.getElementById("integrity-payload");' +
-        'var fpEl=document.getElementById("report-fingerprint-code");' +
-        'var statusEl=document.getElementById("integrity-status");' +
-        'if(!el||!fpEl||!statusEl)return;' +
-        'var payloadStr=el.textContent;' +
-        'var expectedFp=fpEl.textContent.trim();' +
-        'if(!window.crypto||!window.crypto.subtle){statusEl.textContent="Integrity check unavailable in this browser.";return;}' +
-        'window.crypto.subtle.digest("SHA-256",new TextEncoder().encode(payloadStr)).then(function(buf){' +
-          'var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");' +
-          'var s=hex.slice(0,16).toUpperCase();' +
-          'var fp=s.slice(0,4)+"-"+s.slice(4,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16);' +
-          'if(fp===expectedFp){' +
-            'statusEl.innerHTML="&#10003; <strong>VERIFIED</strong> — This report has not been modified since submission.";' +
-            'statusEl.style.background="#f0fdf4";statusEl.style.border="1px solid #16a34a";statusEl.style.color="#14532d";' +
-          '}else{' +
-            'statusEl.innerHTML="&#9888; <strong>INTEGRITY CHECK FAILED</strong> — This report may have been modified. Computed: "+fp+". Expected: "+expectedFp+".";' +
-            'statusEl.style.background="#fef2f2";statusEl.style.border="1px solid #dc2626";statusEl.style.color="#7f1d1d";' +
-          '}' +
-        '}).catch(function(){statusEl.textContent="Integrity check could not run.";});' +
-      '})();<\/script>';
-    }
-
     html += '</body></html>';
 
     // Always download via Blob — works regardless of pop-up blocker settings.
@@ -1071,27 +945,26 @@
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 10000);
 
+    // Show a brief success toast regardless of pop-up blocker state.
+    var toast = document.createElement('div');
+    toast.style.cssText = [
+      'position:fixed', 'bottom:1.5rem', 'left:50%', 'transform:translateX(-50%)',
+      'background:#1a5276', 'color:#fff', 'text-align:center',
+      'padding:0.75rem 1.25rem', 'border-radius:6px', 'font-size:0.9rem',
+      'z-index:10000', 'line-height:1.4', 'box-shadow:0 2px 8px rgba(0,0,0,0.3)',
+      'transition:opacity 0.5s'
+    ].join(';');
+    toast.textContent = 'Results file downloaded. Share it with your recruiter when you are done.';
+    document.body.appendChild(toast);
+    setTimeout(function () { toast.style.opacity = '0'; }, 6000);
+    setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 6600);
+
     // Also open a print window if pop-ups are allowed.
     var w = window.open('', '_blank');
     if (w) {
       w.document.write(html);
       w.document.close();
       setTimeout(function () { w.focus(); w.print(); }, 250);
-    } else {
-      // Pop-up was blocked — the downloaded file is the only copy of the results.
-      // Show a non-dismissable notice inside the locked screen so the candidate
-      // knows where their results went.
-      var notice = document.createElement('div');
-      notice.style.cssText = [
-        'position:fixed', 'top:0', 'left:0', 'right:0',
-        'background:#1a5276', 'color:#fff', 'text-align:center',
-        'padding:0.75rem 1rem', 'font-size:0.95rem', 'z-index:10000',
-        'line-height:1.4'
-      ].join(';');
-      notice.textContent =
-        'Your results have been saved as a downloaded HTML file. ' +
-        'Open it in your browser to review or print your answers.';
-      document.body.appendChild(notice);
     }
   }
 
