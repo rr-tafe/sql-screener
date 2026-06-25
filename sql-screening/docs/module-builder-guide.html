@@ -651,7 +651,7 @@ npm install</code></pre>
     <p>Once the build succeeds, share <code>dist/&lt;id&gt;.html</code> with the screener. The screener guide explains how to forward it to candidates.</p>
 
     <h3>Each candidate gets the same file</h3>
-    <p>The assessment file is not personalised — you send the same <code>.html</code> to every candidate for a given module. The session lock is stored in the candidate's browser, so each candidate's session is isolated on their own machine.</p>
+    <p>The assessment file is not personalised — you send the same <code>.html</code> to every candidate for a given module. Each candidate works in their own browser, so sessions are isolated on their own machine.</p>
 
     <h3>Running multiple modules</h3>
     <p>Each module is independent. Run the builder once per module. Each produces its own <code>dist/&lt;id&gt;.html</code> file. You can have many modules in <code>modules/</code> and build them at any time.</p>

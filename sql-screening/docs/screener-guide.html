@@ -251,10 +251,9 @@
       <li><a href="#during">3 · During the session</a></li>
       <li><a href="#ending">4 · Ending the assessment</a></li>
       <li><a href="#results">5 · Getting results back</a></li>
-      <li><a href="#integrity">6 · Verifying report integrity</a></li>
-      <li><a href="#reviewing">7 · Reviewing the results</a></li>
-      <li><a href="#guidance">8 · Guidance you can give</a></li>
-      <li><a href="#troubleshooting">9 · Troubleshooting</a></li>
+      <li><a href="#reviewing">6 · Reviewing the results</a></li>
+      <li><a href="#guidance">7 · Guidance you can give</a></li>
+      <li><a href="#troubleshooting">8 · Troubleshooting</a></li>
     </ul>
   </toc-nav>
 
@@ -357,12 +356,11 @@
   <ol>
     <li>Tell the candidate: <em>"Please click the Finish Work button in the sidebar whenever you're ready."</em></li>
     <li>A confirmation dialog appears on their screen — they confirm.</li>
-    <li>The screen changes to "SESSION LOCKED" and a results file downloads automatically.</li>
-    <li><strong>A short code appears on the locked screen</strong> under the heading "Report Integrity Fingerprint" — for example, <code>A3F2-B891-7C4D-E520</code>. <strong>Screenshot or write down this code immediately.</strong> You will use it to verify the report file has not been altered before you receive it.</li>
+    <li>A results file downloads automatically to their browser's Downloads folder. A brief notification confirms the download.</li>
   </ol>
 
-  <div class="warning">
-    Once they click Finish Work, the session is locked permanently. They cannot re-open the test in the same browser. Do not ask them to click Finish until you are sure the session is complete.
+  <div class="tip">
+    Do not ask them to click Finish Work until you are sure the session is complete — once they confirm, the download triggers immediately.
   </div>
 
 
@@ -384,42 +382,13 @@
   <ol>
     <li><strong>Check the Downloads folder</strong> — it may have downloaded silently without a notification.</li>
     <li><strong>Check the browser's download bar</strong> — some browsers (Firefox, Edge) show downloads in a bar at the bottom or top of the window.</li>
-    <li><strong>Pop-up blocker active:</strong> A blue banner should appear on the locked screen saying "Your results have been saved as a downloaded HTML file." This confirms the download did complete — they just need to look in their Downloads folder.</li>
+    <li><strong>A print/preview window may also open</strong> in a separate tab. If the browser blocked it, the results file was still downloaded — the download always completes regardless of pop-up settings.</li>
     <li>If there is truly no file, ask them to check for any browser download permission dialogs they may have dismissed.</li>
   </ol>
 
 
   <!-- ──────────────────────────────────────────────────────── -->
-  <h2 id="integrity">6 · Verifying report integrity</h2>
-
-  <p>The results file includes a tamper-evidence mechanism. Because the file lives on the candidate's machine between submission and delivery to you, this lets you confirm it has not been edited.</p>
-
-  <h3>How it works</h3>
-  <p>When the candidate clicks Finish Work, the tool computes a fingerprint from their answers, SQL, and notes. This fingerprint appears in two places:</p>
-  <ul>
-    <li><strong>On the locked screen</strong> (visible to you via screen share) — the "Report Integrity Fingerprint" code, e.g. <code>A3F2-B891-7C4D-E520</code>.</li>
-    <li><strong>At the top of the results file</strong> — the same code, plus an automated VERIFIED / INTEGRITY CHECK FAILED banner computed when the report is opened.</li>
-  </ul>
-
-  <h3>Step-by-step verification</h3>
-  <ol>
-    <li><strong>During the call:</strong> When the locked screen appears, screenshot or write down the fingerprint code.</li>
-    <li><strong>When you receive the file:</strong> Open the <code>_results.html</code> file in a browser. The fingerprint is shown in a box at the very top of the page.</li>
-    <li><strong>Check the code matches</strong> what you recorded from the screen.</li>
-    <li><strong>Check the VERIFIED banner</strong> — the report runs an automatic integrity check when opened and displays a green ✓ VERIFIED message if nothing has been changed, or a red warning if it detects a discrepancy.</li>
-  </ol>
-
-  <div class="tip">
-    The automated check catches simple edits (changing FAIL to PASS in the HTML text). The fingerprint code you recorded during the live session is the stronger safeguard — a sophisticated edit would need to produce the exact same code, which is computationally infeasible.
-  </div>
-
-  <div class="warning">
-    <strong>The fingerprint was not recorded?</strong> If you forgot to note the code during the call, the automated VERIFIED banner in the report is still useful — it catches naive modifications. If the banner shows VERIFIED, the report is almost certainly unaltered.
-  </div>
-
-
-  <!-- ──────────────────────────────────────────────────────── -->
-  <h2 id="reviewing">7 · Reviewing the results</h2>
+  <h2 id="reviewing">6 · Reviewing the results</h2>
 
   <p>Open the <code>_results.html</code> file in any browser. No internet connection needed.</p>
 
@@ -463,7 +432,7 @@
 
 
   <!-- ──────────────────────────────────────────────────────── -->
-  <h2 id="guidance">8 · Guidance you can give candidates</h2>
+  <h2 id="guidance">7 · Guidance you can give candidates</h2>
 
   <p>These are things you are permitted to tell a candidate if they ask during the test:</p>
 
@@ -501,21 +470,13 @@
 
 
   <!-- ──────────────────────────────────────────────────────── -->
-  <h2 id="troubleshooting">9 · Troubleshooting</h2>
+  <h2 id="troubleshooting">8 · Troubleshooting</h2>
 
   <h3>The file won't open</h3>
   <ul>
     <li>Make sure they are double-clicking the file (not trying to open it from inside an email without saving first).</li>
     <li>Any modern browser works: Chrome, Firefox, Safari, Edge. Internet Explorer is not supported.</li>
     <li>On macOS, if a security dialog appears saying the file is from an "unidentified developer", they should right-click → Open to bypass it.</li>
-  </ul>
-
-  <h3>The screen shows "SESSION LOCKED" immediately on open</h3>
-  <p>This means the candidate (or someone else on that browser) already completed this assessment file previously. The lock is stored in the browser. Options:</p>
-  <ul>
-    <li>Have them open the file in a different browser (e.g. Chrome instead of Safari).</li>
-    <li>Have them open the file in a private/incognito window.</li>
-    <li>If neither is possible, contact whoever manages the assessment to get a fresh copy of the file.</li>
   </ul>
 
   <h3>SQL queries are not running — "Database not yet initialized"</h3>
