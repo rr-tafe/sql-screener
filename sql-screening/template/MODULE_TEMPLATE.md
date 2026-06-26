@@ -88,6 +88,12 @@ If the author has no extra instructions, proceed directly to generation. If they
 
 After all nine topics are answered, generate all seven required files and deliver them as a **single zip file** named `<module-id>.zip`. The zip must contain a top-level folder named `<module-id>/` with the following structure:
 
+### Mandatory pre-delivery quality gate
+
+Immediately before producing final output, you must run the **Authoring quality gate (self-check before final output)** from **Precision, Boundaries, and Ambiguity Rules (Enforce Throughout)**.
+
+If any question fails that gate, revise the affected prompt(s) and solution(s) first. Do not deliver the zip until all questions pass.
+
 ```
 <module-id>/
 ├── module.json
@@ -226,6 +232,76 @@ These rules apply to all values written into CSV files and any string literals i
 - **No non-breaking spaces, zero-width spaces, or other invisible Unicode**: use plain space (U+0020) only.
 - **No currency symbols other than `$`**: write `USD`, `EUR`, `GBP` as text if needed.
 - These restrictions exist to prevent silent encoding errors in the CSV parser and SQLite string hash mismatches. There are no exceptions.
+
+---
+
+## Precision, Boundaries, and Ambiguity Rules (Enforce Throughout)
+
+These rules are mandatory for all generated questions and solutions. The goal is to prevent candidates from failing due to hidden interpretation differences.
+
+### 1) Numeric precision and rounding
+
+- If a question returns computed numeric values (percentages, averages, ratios, rates, currency math), the prompt must explicitly state the required precision.
+- Default precision if not otherwise specified: round to 2 decimal places.
+- Use SQLite-compatible rounding in solutions: `ROUND(expression, 2)` (or another explicitly stated scale).
+- The prompt must state whether values are:
+  - Rounded (for example, "round to 2 decimal places"), or
+  - Truncated (for example, "truncate to 2 decimal places"), or
+  - Unrounded/raw.
+- Do not mix precision conventions across questions unless the prompt explicitly says so.
+- If percentages are requested, the prompt must specify whether output is:
+  - Fraction form (for example, `0.1234`), or
+  - Percent form (for example, `12.34`), and whether the `%` sign should be included in output values.
+
+### 2) Date/time and range boundary semantics
+
+- Every time-based filter in prompts must declare boundary behavior explicitly:
+  - Inclusive bounds: "including both start and end dates", or
+  - Mixed bounds: "including start date, excluding end date".
+- For phrases like "last N days", prompts must define the anchor date and inclusion rule explicitly. Use wording like:
+  - "Using `MAX(event_date)` as the anchor date, include rows where `event_date` is between `date(anchor, '-179 days')` and `anchor`, inclusive."
+- Prefer explicit predicates in solutions to match the prompt semantics:
+  - Inclusive window: `col >= start_date AND col <= end_date`
+  - Half-open window: `col >= start_date AND col < end_date`
+- If using calendar periods (month, quarter, year-to-date), prompts must specify timezone assumptions (or state date-only logic with no timezone).
+- Avoid ambiguous words alone ("recent", "current", "last quarter") without an explicit definition rule.
+
+### 3) Nulls, duplicates, and ties must be specified
+
+- If NULL handling affects results, the prompt must say what to do (exclude NULLs, treat as 0, keep as separate category, etc.).
+- If duplicates may exist, the prompt must specify whether to use raw rows or deduplicated entities (`COUNT(*)` vs `COUNT(DISTINCT id)`).
+- If a "top N" style request is used, the prompt must define tie handling explicitly:
+  - Exactly N rows via deterministic tie-breaker, or
+  - Include all tied rows at the cutoff.
+
+### 4) String comparison and normalization rules
+
+- If case differences exist in data, prompts must explicitly state whether matching is case-sensitive or case-insensitive.
+- If whitespace or formatting inconsistencies may appear, prompts must state whether normalization is required (for example, `TRIM`, `LOWER`).
+- If pattern matching is required, prompt wording must specify expected behavior (for example, starts with, contains, exact match).
+
+### 5) Units, sign conventions, and denominator definitions
+
+- Prompts must define measurement units (for example, USD vs cents, days vs months) when numeric interpretation depends on units.
+- Prompts must define sign behavior when relevant (for example, refunds are negative revenue; chargebacks excluded).
+- For ratios/rates, prompts must define the denominator explicitly (for example, "conversion rate = converted_customers / contacted_customers").
+
+### 6) Output schema and determinism requirements
+
+- `expectedColumns` and prompt wording must align exactly in meaning and order.
+- Prompts must avoid requiring row order for correctness, consistent with framework hashing behavior.
+- If a deterministic single-row answer is expected, prompt must avoid constructs that could yield multiple valid interpretations.
+
+### 7) Authoring quality gate (self-check before final output)
+
+Before finalizing files, verify each question has all of the following:
+- Explicit numeric precision rule (or explicitly unrounded).
+- Explicit boundary semantics for every range/date filter.
+- Explicit NULL/duplicate/tie handling where relevant.
+- Explicit unit/denominator/sign definitions where relevant.
+- No ambiguous temporal wording without definition.
+
+If any item is missing, revise the prompt and solution before delivering the module.
 
 ---
 
