@@ -41,6 +41,7 @@
   --sidebar-width:      240px;
   --sidebar-collapsed:  48px;
   --right-panel-width:  320px;
+  --schema-panel-height: 220px;
   --transition-speed:   0.2s;
 
   --font-mono: 'Fira Code', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
@@ -320,7 +321,8 @@ button:disabled {
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   height: 100vh;
 }
@@ -353,9 +355,9 @@ button:disabled {
 .sidebar-content {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
   padding: 8px 0 8px 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* Candidate name below timer */
@@ -395,8 +397,7 @@ button:disabled {
 /* Nav links */
 .sidebar-nav {
   flex-grow: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   padding: 0.25rem 0;
 }
 
@@ -827,16 +828,34 @@ button:disabled {
 
 .playground-schema-section {
   overflow-y: auto;
-  max-height: 220px;
+  height: var(--schema-panel-height);
   border-bottom: 1px solid var(--color-border);
-  transition: max-height var(--transition-speed) ease, opacity var(--transition-speed);
+  transition: height var(--transition-speed) ease, opacity var(--transition-speed);
   flex-shrink: 0;
 }
 
 .playground-schema-section.collapsed {
-  max-height: 0;
+  height: 0;
   overflow: hidden;
   border-bottom: none;
+}
+
+.schema-resize-handle {
+  height: 6px;
+  background: var(--color-border);
+  cursor: row-resize;
+  user-select: none;
+  transition: background var(--transition-speed);
+  flex-shrink: 0;
+}
+
+.schema-resize-handle:hover,
+.schema-resize-handle.dragging {
+  background: var(--color-accent);
+}
+
+.playground-schema-section.collapsed + .schema-resize-handle {
+  display: none;
 }
 
 .playground-schema-info {
@@ -896,7 +915,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .right-panel-header {
@@ -976,8 +996,8 @@ button:disabled {
 }
 
 .right-panel-scroll {
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -1035,6 +1055,11 @@ button:disabled {
 
 .rp-section-body {
   /* content shown when not hidden */
+}
+
+#fn-ref-body-wrap {
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .rp-section-body.hidden {

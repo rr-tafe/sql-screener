@@ -52,10 +52,7 @@ __STYLE_CSS__
       <div id="playground-schema-section" class="playground-schema-section">
         <div id="playground-schema-info" class="playground-schema-info"></div>
       </div>
-      <div class="right-panel-notes-section">
-        <div class="right-panel-section-label">Notes</div>
-        <textarea id="exploration-notes" class="notes-textarea right-panel-notes-textarea" placeholder="Your notes here…" aria-label="Exploration notes"></textarea>
-      </div>
+      <div id="schema-resize-handle" class="schema-resize-handle" aria-hidden="true"></div>
       <div class="playground-editor-wrap">
         <div id="playground-editor" class="cm-editor-container" aria-label="Playground SQL editor"></div>
         <div class="editor-buttons">
@@ -64,8 +61,20 @@ __STYLE_CSS__
         </div>
         <div id="playground-status" class="status-area" role="status" aria-live="polite"></div>
       </div>
+      <div class="right-panel-notes-section">
+        <div class="right-panel-section-label">Notes</div>
+        <textarea id="exploration-notes" class="notes-textarea right-panel-notes-textarea" placeholder="Your notes here…" aria-label="Exploration notes"></textarea>
+      </div>
       <div class="right-panel-scroll">
         <div id="playground-results" class="results-area playground-results"></div>
+
+        <div class="rp-section">
+          <div class="rp-section-header" id="query-history-section-header">
+            <span class="rp-section-label">Query History</span>
+            <button class="rp-section-toggle" id="query-history-toggle" aria-expanded="false">&#9660;</button>
+          </div>
+          <div class="rp-section-body hidden" id="query-history-body"></div>
+        </div>
 
         <div class="rp-section">
           <div class="rp-section-header" id="fn-ref-section-header">
@@ -76,14 +85,6 @@ __STYLE_CSS__
             <input id="fn-ref-search" class="fn-ref-search" type="text" placeholder="Search functions…" aria-label="Search functions" autocomplete="off" spellcheck="false">
             <div id="fn-ref-body" class="fn-ref-body"></div>
           </div>
-        </div>
-
-        <div class="rp-section">
-          <div class="rp-section-header" id="query-history-section-header">
-            <span class="rp-section-label">Query History</span>
-            <button class="rp-section-toggle" id="query-history-toggle" aria-expanded="false">&#9660;</button>
-          </div>
-          <div class="rp-section-body hidden" id="query-history-body"></div>
         </div>
       </div>
     </aside>

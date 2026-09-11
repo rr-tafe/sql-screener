@@ -162,6 +162,7 @@
     wireSidebarCollapse();
     wireResizeHandle();
     wireLeftResizeHandle();
+    wireSchemaResizeHandle();
     wireBottomButtons(questions, moduleTitle, moduleVersion);
     wireFnRefSection();
     wireQueryHistory();
@@ -590,6 +591,46 @@
       var newWidth = e.clientX - rect.left;
       newWidth = Math.max(160, Math.min(500, newWidth));
       document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+    });
+
+    document.addEventListener('mouseup', function () {
+      if (!isDragging) return;
+      isDragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  // ============================================================
+  // Vertical resize handle for schema section (right panel)
+  // ============================================================
+  function wireSchemaResizeHandle() {
+    var handle = document.getElementById('schema-resize-handle');
+    var section = document.getElementById('playground-schema-section');
+    var rightPanel = document.getElementById('right-panel');
+    if (!handle || !section || !rightPanel) return;
+
+    var isDragging = false;
+
+    handle.addEventListener('mousedown', function (e) {
+      if (section.classList.contains('collapsed')) return;
+      isDragging = true;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+      if (!isDragging) return;
+      var sectionRect = section.getBoundingClientRect();
+      var panelRect = rightPanel.getBoundingClientRect();
+      var proposedHeight = e.clientY - sectionRect.top;
+      var minHeight = 80;
+      var maxHeight = Math.max(minHeight, Math.floor(panelRect.height * 0.7));
+      var newHeight = Math.max(minHeight, Math.min(maxHeight, proposedHeight));
+      section.style.height = newHeight + 'px';
     });
 
     document.addEventListener('mouseup', function () {

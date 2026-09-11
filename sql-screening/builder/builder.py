@@ -34,6 +34,52 @@ def warn(msg):
     print(f"WARNING: {msg}", file=sys.stderr)
 
 
+def _normalize_module_meta(module_meta):
+    """Support both legacy and generated module.json field names."""
+    engine = module_meta.get('engine')
+    if not engine:
+        engine = module_meta.get('sql_dialect') or module_meta.get('sqlDialect')
+    engine = str(engine).strip().lower() if engine is not None else ''
+
+    question_count = module_meta.get('questionCount')
+    if question_count is None:
+        question_count = module_meta.get('question_count')
+
+    normalized = dict(module_meta)
+    normalized['engine'] = engine
+    normalized['questionCount'] = question_count
+
+    # Runtime injection expects these keys to exist.
+    normalized.setdefault('title', module_meta.get('module_id', 'SQL Screening Module'))
+    normalized.setdefault('version', '1.0.0')
+    normalized.setdefault('description', '')
+    return normalized
+
+
+def _normalize_questions(questions):
+    """Support both legacy and generated questions.json field names."""
+    normalized = []
+    for idx, q in enumerate(questions, start=1):
+        qn = dict(q)
+
+        qid = qn.get('id')
+        if not qid:
+            qid = qn.get('question_id') or qn.get('questionId')
+        if not qid:
+            qid = f'q{idx}'
+        qn['id'] = str(qid).strip().lower()
+
+        expected_cols = qn.get('expectedColumns')
+        if expected_cols is None:
+            expected_cols = qn.get('expected_output_columns') or qn.get('expectedOutputColumns')
+        if expected_cols is None:
+            expected_cols = []
+        qn['expectedColumns'] = expected_cols
+
+        normalized.append(qn)
+    return normalized
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 1: Structural validation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,7 +128,7 @@ def step_validate_structure(module_dir):
 
 def step_engine_check(module_dir):
     with open(os.path.join(module_dir, 'module.json'), 'r', encoding='utf-8') as f:
-        module_meta = json.load(f)
+        module_meta = _normalize_module_meta(json.load(f))
     engine = module_meta.get('engine', '')
     if engine != 'sqlite':
         die(f"Unsupported engine '{engine}' in module.json — expected 'sqlite'")
@@ -96,7 +142,7 @@ def step_engine_check(module_dir):
 
 def step_question_count(module_dir, module_meta):
     with open(os.path.join(module_dir, 'questions.json'), 'r', encoding='utf-8') as f:
-        questions = json.load(f)
+        questions = _normalize_questions(json.load(f))
     declared = module_meta.get('questionCount', -1)
     actual = len(questions)
     if actual != declared:
