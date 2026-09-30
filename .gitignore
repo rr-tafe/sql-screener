@@ -45,3 +45,5 @@ sql-screening/dist/*
 sql-screening/modules/*
 !sql-screening/modules/ci-test
 !sql-screening/modules/ci-test/**
+
+sql-screening/template/*.txt
