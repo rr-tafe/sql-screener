@@ -46,9 +46,25 @@ __STYLE_CSS__
         <span class="right-panel-title">Playground</span>
         <div class="right-panel-header-controls">
           <button id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Toggle dark mode" title="Toggle light/dark mode">&#9788;</button>
+          <button id="fn-ref-open-btn" class="fn-ref-open-btn" aria-label="Open SQLite reference" aria-expanded="false" title="Open SQLite reference">SQLite Ref</button>
           <button id="schema-toggle-btn" class="schema-toggle-btn" aria-label="Toggle schema panel" aria-expanded="true">&#9650;</button>
         </div>
       </div>
+
+      <div id="fn-ref-popover" class="fn-ref-popover hidden" role="dialog" aria-label="SQLite reference">
+        <div class="fn-ref-popover-header">
+          <span class="fn-ref-popover-title">SQLite Reference</span>
+          <div class="fn-ref-popover-actions">
+            <button id="fn-ref-pin-btn" class="fn-ref-mini-btn" aria-pressed="false" title="Pin reference panel">Pin</button>
+            <button id="fn-ref-close-btn" class="fn-ref-mini-btn" title="Hide reference panel">Hide</button>
+          </div>
+        </div>
+        <input id="fn-ref-search" class="fn-ref-search" type="text" placeholder="Search functions..." aria-label="Search functions" autocomplete="off" spellcheck="false">
+        <div id="fn-ref-body-wrap" class="fn-ref-body-wrap">
+          <div id="fn-ref-body" class="fn-ref-body"></div>
+        </div>
+      </div>
+
       <div id="playground-schema-section" class="playground-schema-section">
         <div id="playground-schema-info" class="playground-schema-info"></div>
       </div>
@@ -61,10 +77,6 @@ __STYLE_CSS__
         </div>
         <div id="playground-status" class="status-area" role="status" aria-live="polite"></div>
       </div>
-      <div class="right-panel-notes-section">
-        <div class="right-panel-section-label">Notes</div>
-        <textarea id="exploration-notes" class="notes-textarea right-panel-notes-textarea" placeholder="Your notes here…" aria-label="Exploration notes"></textarea>
-      </div>
       <div class="right-panel-scroll">
         <div id="playground-results" class="results-area playground-results"></div>
 
@@ -74,17 +86,6 @@ __STYLE_CSS__
             <button class="rp-section-toggle" id="query-history-toggle" aria-expanded="false">&#9660;</button>
           </div>
           <div class="rp-section-body hidden" id="query-history-body"></div>
-        </div>
-
-        <div class="rp-section">
-          <div class="rp-section-header" id="fn-ref-section-header">
-            <span class="rp-section-label">SQLite Reference</span>
-            <button class="rp-section-toggle" id="fn-ref-toggle" aria-expanded="false">&#9660;</button>
-          </div>
-          <div class="rp-section-body hidden" id="fn-ref-body-wrap">
-            <input id="fn-ref-search" class="fn-ref-search" type="text" placeholder="Search functions…" aria-label="Search functions" autocomplete="off" spellcheck="false">
-            <div id="fn-ref-body" class="fn-ref-body"></div>
-          </div>
         </div>
       </div>
     </aside>

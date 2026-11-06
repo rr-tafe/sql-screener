@@ -42,10 +42,10 @@ Ask: How much data should the dataset contain? Present this table:
 
 | Tier | Approx rows/table | Est. file size | Status |
 |------|-------------------|----------------|--------|
-| Small | 10–50 rows | ~1–2 MB | ✅ Recommended for demos |
-| Medium | 100–500 rows | ~3–4 MB | ✅ Recommended for real screening |
-| Large | 2,000–5,000 rows | ~8–15 MB | ⚠️ Risks exceeding 5 MB budget |
-| Over budget | >5,000 rows | >15 MB | ❌ Not supported |
+| Small | 10–50 rows | ~1–2 MB | Recommended for demos |
+| Medium | 100–500 rows | ~3–4 MB | Recommended for real screening |
+| Large | 2,000–5,000 rows | ~8–15 MB | Risks exceeding 5 MB budget |
+| Over budget | >5,000 rows | >15 MB | Not supported |
 
 **Recommend Medium** as the default. If they choose Large, warn them that the assembled HTML file may exceed 5 MB and suggest reducing volume or accepting the risk.
 
@@ -235,73 +235,22 @@ These rules apply to all values written into CSV files and any string literals i
 
 ---
 
-## Precision, Boundaries, and Ambiguity Rules (Enforce Throughout)
+## Candidate-Facing Question Design
 
-These rules are mandatory for all generated questions and solutions. The goal is to prevent candidates from failing due to hidden interpretation differences.
+This is a screening assessment, not a guided exercise. Questions must state a clear business objective and the required output, while leaving candidates to inspect the schema and data, identify relevant quality issues, choose an appropriate SQL approach, and justify reasonable assumptions. Keep each prompt brief, preferably one or two sentences. Do not prescribe a formula, SQL construct, cleaning step, or known data issue unless that information is an essential business rule that cannot reasonably be inferred from the available materials. Separate business requirements, which candidates need to know, from implementation decisions and data observations, which the assessment is intended to test. Record the latter in the author-facing question guide and reference solution, not in questions.json.
 
-### 1) Numeric precision and rounding
+---
 
-- If a question returns computed numeric values (percentages, averages, ratios, rates, currency math), the prompt must explicitly state the required precision.
-- Default precision if not otherwise specified: round to 2 decimal places.
-- Use SQLite-compatible rounding in solutions: `ROUND(expression, 2)` (or another explicitly stated scale).
-- The prompt must state whether values are:
-  - Rounded (for example, "round to 2 decimal places"), or
-  - Truncated (for example, "truncate to 2 decimal places"), or
-  - Unrounded/raw.
-- Do not mix precision conventions across questions unless the prompt explicitly says so.
-- If percentages are requested, the prompt must specify whether output is:
-  - Fraction form (for example, `0.1234`), or
-  - Percent form (for example, `12.34`), and whether the `%` sign should be included in output values.
+## Clarity, Fairness, and Grading Rules (Enforce Throughout)
 
-### 2) Date/time and range boundary semantics
+- Specify the outcome, not the method. State what the business wants to learn and which measures or entities to return. Do not name functions, joins, CTEs, formulas, normalisation steps, or embedded anomalies in candidate prompts.
+- Provide essential business definitions only. If a term such as revenue, active customer, or cancelled order has a definition that cannot be established from the schema, data, or scenario, define it briefly in the prompt or candidate-facing dataset documentation. Do not use a hidden definition in the reference solution.
+- Avoid artificial ambiguity. Give dates, periods, units, output precision and tie rules when different reasonable interpretations would produce different graded results. Use plain business language rather than SQL predicates or calculation instructions.
+- Let candidates discover data quality issues. Do not announce irregular casing, duplicates, missing values, orphaned records or business-rule violations in the question. Ensure the data provides enough evidence to identify issues relevant to the task.
+- Do not silently grade an undisclosed judgement call. If multiple defensible treatments of an issue would produce different results, either state the necessary business rule, redesign the data or question so the distinction does not affect the graded result, or provide a way to assess the candidate’s stated assumption. A single reference query is not proof that only one answer is reasonable.
+- Keep outputs testable. The requested columns and measures must be clear. expectedColumns and reference solutions must match the intended result. Row order must not affect correctness.
 
-- Every time-based filter in prompts must declare boundary behavior explicitly:
-  - Inclusive bounds: "including both start and end dates", or
-  - Mixed bounds: "including start date, excluding end date".
-- For phrases like "last N days", prompts must define the anchor date and inclusion rule explicitly. Use wording like:
-  - "Using `MAX(event_date)` as the anchor date, include rows where `event_date` is between `date(anchor, '-179 days')` and `anchor`, inclusive."
-- Prefer explicit predicates in solutions to match the prompt semantics:
-  - Inclusive window: `col >= start_date AND col <= end_date`
-  - Half-open window: `col >= start_date AND col < end_date`
-- If using calendar periods (month, quarter, year-to-date), prompts must specify timezone assumptions (or state date-only logic with no timezone).
-- Avoid ambiguous words alone ("recent", "current", "last quarter") without an explicit definition rule.
-
-### 3) Nulls, duplicates, and ties must be specified
-
-- If NULL handling affects results, the prompt must say what to do (exclude NULLs, treat as 0, keep as separate category, etc.).
-- If duplicates may exist, the prompt must specify whether to use raw rows or deduplicated entities (`COUNT(*)` vs `COUNT(DISTINCT id)`).
-- If a "top N" style request is used, the prompt must define tie handling explicitly:
-  - Exactly N rows via deterministic tie-breaker, or
-  - Include all tied rows at the cutoff.
-
-### 4) String comparison and normalization rules
-
-- If case differences exist in data, prompts must explicitly state whether matching is case-sensitive or case-insensitive.
-- If whitespace or formatting inconsistencies may appear, prompts must state whether normalization is required (for example, `TRIM`, `LOWER`).
-- If pattern matching is required, prompt wording must specify expected behavior (for example, starts with, contains, exact match).
-
-### 5) Units, sign conventions, and denominator definitions
-
-- Prompts must define measurement units (for example, USD vs cents, days vs months) when numeric interpretation depends on units.
-- Prompts must define sign behavior when relevant (for example, refunds are negative revenue; chargebacks excluded).
-- For ratios/rates, prompts must define the denominator explicitly (for example, "conversion rate = converted_customers / contacted_customers").
-
-### 6) Output schema and determinism requirements
-
-- `expectedColumns` and prompt wording must align exactly in meaning and order.
-- Prompts must avoid requiring row order for correctness, consistent with framework hashing behavior.
-- If a deterministic single-row answer is expected, prompt must avoid constructs that could yield multiple valid interpretations.
-
-### 7) Authoring quality gate (self-check before final output)
-
-Before finalizing files, verify each question has all of the following:
-- Explicit numeric precision rule (or explicitly unrounded).
-- Explicit boundary semantics for every range/date filter.
-- Explicit NULL/duplicate/tie handling where relevant.
-- Explicit unit/denominator/sign definitions where relevant.
-- No ambiguous temporal wording without definition.
-
-If any item is missing, revise the prompt and solution before delivering the module.
+Authoring quality gate: For each question, check that the business request is brief and understandable; it does not reveal the intended SQL technique or planted data issues; all indispensable business rules are available to the candidate; and a capable candidate can reach the graded result without guessing an undisclosed convention. Run the reference solution against the generated data and inspect whether plausible alternative interpretations would be unfairly marked wrong.
 
 ---
 
