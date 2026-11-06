@@ -145,7 +145,6 @@ ok(htmlContent.includes('id="center-panel"'), 'Center panel present');
 ok(htmlContent.includes('id="right-panel"'), 'Right panel present');
 ok(htmlContent.includes('id="playground-editor"'), 'Playground editor present');
 ok(htmlContent.includes('id="sidebar-toggle"'), 'Sidebar toggle button present');
-ok(htmlContent.includes('id="exploration-notes"'), 'Exploration notes textarea present in right panel');
 ok(htmlContent.includes('id="playground-schema-info"'), 'Schema info section in playground present');
 ok(htmlContent.includes('id="left-panel-resize-handle"'), 'Left panel resize handle present');
 ok(!htmlContent.includes('id="section-exploration"'), 'Exploration section removed from center panel');

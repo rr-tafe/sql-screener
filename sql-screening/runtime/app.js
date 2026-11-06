@@ -38,6 +38,7 @@
   var questionStatuses = {};        // { q1: 'pass'|'fail'|'error'|'not-permitted'|null }
   var editors = {};                 // { exploration, playground, q1, q2, ... }
   var schema = null;                // SQL_SCHEMA_JSON
+  var tablePreviewState = {};       // { [tableName]: { loaded, rows, columns, rowCount } }
 
   // ============================================================
   // DOM ready
@@ -164,7 +165,7 @@
     wireLeftResizeHandle();
     wireSchemaResizeHandle();
     wireBottomButtons(questions, moduleTitle, moduleVersion);
-    wireFnRefSection();
+    wireFnRefPopup();
     wireQueryHistory();
     wireThemeToggle();
   }
@@ -475,20 +476,56 @@
     }
     if (tables.length > 0) {
       html += '<div class="schema-tables-list">';
-      tables.forEach(function (tableName) {
+      tables.forEach(function (tableName, tableIdx) {
         var cols = schema.tables[tableName] || [];
-        html += '<div class="schema-table-item">';
+        html += '<div class="schema-table-panel" data-table="' + escapeHtml(tableName) + '">';
+        html += '<button class="schema-table-toggle" data-table-toggle="' + escapeHtml(tableName) + '" aria-expanded="false">';
         html += '<span class="schema-table-name">' + escapeHtml(tableName) + '</span>';
+        html += '<span class="schema-table-toggle-icon">&#9662;</span>';
+        html += '</button>';
         html += '<span class="schema-table-cols">';
         cols.forEach(function (c) {
           html += '<code>' + escapeHtml(c) + '</code>';
         });
-        html += '</span></div>';
+        html += '</span>';
+        html += '<div id="table-preview-' + tableIdx + '" class="schema-table-preview hidden" data-preview-table="' + escapeHtml(tableName) + '">';
+        html += '<div class="schema-table-preview-loading text-muted">Expand to load preview...</div>';
+        html += '</div>';
+        html += '</div>';
       });
       html += '</div>';
     }
 
     container.innerHTML = html;
+
+    container.querySelectorAll('[data-table-toggle]').forEach(function (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        var tableName = toggleBtn.getAttribute('data-table-toggle');
+        var panel = toggleBtn.closest('.schema-table-panel');
+        if (!panel || !tableName) return;
+        var preview = panel.querySelector('.schema-table-preview');
+        if (!preview) return;
+
+        var isHidden = preview.classList.toggle('hidden');
+        toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+        if (isHidden) {
+          panel.classList.remove('expanded');
+          return;
+        }
+
+        panel.classList.add('expanded');
+        if (!tablePreviewState[tableName] || !tablePreviewState[tableName].loaded) {
+          preview.innerHTML = '<div class="schema-table-preview-loading text-muted">Loading preview...</div>';
+          loadTablePreview(tableName, preview);
+        } else {
+          var cached = tablePreviewState[tableName];
+          renderResultsTable(preview, cached.rows, cached.columns, {
+            pageSize: 6,
+            summaryText: (cached.rowCount || cached.rows.length) + ' row' + ((cached.rowCount || cached.rows.length) !== 1 ? 's' : '') + ' total'
+          });
+        }
+      });
+    });
 
     // Wire the collapse toggle
     var toggleBtn = document.getElementById('schema-toggle-btn');
@@ -499,6 +536,38 @@
         toggleBtn.innerHTML = collapsed ? '&#9660;' : '&#9650;';
         toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       });
+    }
+  }
+
+  function quoteIdent(name) {
+    return '"' + String(name).replace(/"/g, '""') + '"';
+  }
+
+  function loadTablePreview(tableName, previewEl) {
+    if (!previewEl) return;
+    if (!db) {
+      previewEl.innerHTML = '<p class="no-results">Database not yet initialized.</p>';
+      return;
+    }
+
+    try {
+      var countResult = execSQL('SELECT COUNT(*) AS total_rows_ FROM ' + quoteIdent(tableName));
+      var rowCount = countResult.rows && countResult.rows.length ? Number(countResult.rows[0][0]) : 0;
+      var tableResult = execSQL('SELECT * FROM ' + quoteIdent(tableName));
+
+      tablePreviewState[tableName] = {
+        loaded: true,
+        rows: tableResult.rows,
+        columns: tableResult.columns,
+        rowCount: rowCount
+      };
+
+      renderResultsTable(previewEl, tableResult.rows, tableResult.columns, {
+        pageSize: 6,
+        summaryText: rowCount + ' row' + (rowCount !== 1 ? 's' : '') + ' total'
+      });
+    } catch (err) {
+      previewEl.innerHTML = '<p class="no-results">Unable to preview table: ' + escapeHtml(err.message) + '</p>';
     }
   }
 
@@ -643,7 +712,7 @@
   }
 
   // ============================================================
-  // SQLite function reference — inline collapsible
+  // SQLite function reference — popover overlay
   // ============================================================
   var SQLITE_REFS = [
     { cat: 'Aggregate', fns: [
@@ -706,13 +775,17 @@
     ]}
   ];
 
-  function wireFnRefSection() {
-    var toggleBtn = document.getElementById('fn-ref-toggle');
+  function wireFnRefPopup() {
+    var openBtn   = document.getElementById('fn-ref-open-btn');
+    var popover   = document.getElementById('fn-ref-popover');
+    var closeBtn  = document.getElementById('fn-ref-close-btn');
+    var pinBtn    = document.getElementById('fn-ref-pin-btn');
     var bodyWrap  = document.getElementById('fn-ref-body-wrap');
     var search    = document.getElementById('fn-ref-search');
     var body      = document.getElementById('fn-ref-body');
+    var isPinned  = false;
 
-    if (!toggleBtn || !bodyWrap) return;
+    if (!openBtn || !popover || !closeBtn || !pinBtn || !bodyWrap || !search || !body) return;
 
     function renderFnRef(q) {
       var query = (q || '').toLowerCase().trim();
@@ -747,25 +820,65 @@
         : '<div class="fn-ref-no-results">No matching functions.</div>';
     }
 
-    var header = document.getElementById('fn-ref-section-header');
-    header.addEventListener('click', function (e) {
-      if (e.target === search) return; // don't collapse when clicking into search box
-      var isHidden = bodyWrap.classList.toggle('hidden');
-      toggleBtn.innerHTML = isHidden ? '&#9660;' : '&#9650;';
-      toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-      if (!isHidden) {
-        renderFnRef(search.value);
-        search.focus();
+    function setPinned(nextPinned) {
+      isPinned = !!nextPinned;
+      pinBtn.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
+      pinBtn.textContent = isPinned ? 'Unpin' : 'Pin';
+      pinBtn.classList.toggle('active', isPinned);
+    }
+
+    function openPopover() {
+      popover.classList.remove('hidden');
+      openBtn.setAttribute('aria-expanded', 'true');
+      renderFnRef(search.value);
+      search.focus();
+    }
+
+    function closePopover() {
+      popover.classList.add('hidden');
+      openBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    openBtn.addEventListener('click', function () {
+      if (popover.classList.contains('hidden')) {
+        openPopover();
+      } else {
+        closePopover();
       }
     });
 
-    search.addEventListener('click', function (e) {
-      e.stopPropagation(); // prevent header click handler from re-collapsing
+    closeBtn.addEventListener('click', function () {
+      closePopover();
+    });
+
+    pinBtn.addEventListener('click', function () {
+      setPinned(!isPinned);
+    });
+
+    popover.addEventListener('click', function (e) {
+      e.stopPropagation();
+    });
+
+    document.addEventListener('click', function (e) {
+      if (popover.classList.contains('hidden') || isPinned) return;
+      if (e.target === openBtn || openBtn.contains(e.target)) return;
+      if (!popover.contains(e.target)) {
+        closePopover();
+      }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !popover.classList.contains('hidden')) {
+        closePopover();
+      }
     });
 
     search.addEventListener('input', function () {
       renderFnRef(search.value);
     });
+
+    setPinned(false);
+    renderFnRef('');
   }
 
   function wireQueryHistory() {
@@ -883,8 +996,6 @@
       if (questionStatuses[q.id] === 'pass') passCount++;
     });
 
-    var explorationNotes = document.getElementById('exploration-notes').value;
-
     var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
     html += '<title>Results — ' + escapeHtml(moduleTitle) + '</title>';
     html += '<style>';
@@ -920,16 +1031,6 @@
 
     // Score
     html += '<div class="score">' + passCount + ' of ' + questions.length + ' questions passed</div>';
-
-    // Notes
-    html += '<h2>Notes</h2>';
-    html += '<div class="section">';
-    if (explorationNotes.trim()) {
-      html += '<pre>' + escapeHtml(explorationNotes) + '</pre>';
-    } else {
-      html += '<p><em>No notes recorded.</em></p>';
-    }
-    html += '</div>';
 
     // Per-question results
     html += '<h2>Question Results</h2>';
@@ -1061,7 +1162,8 @@
    * @param {Array}       rows         - array of arrays (sql.js .values format)
    * @param {Array}       columnNames  - array of strings
    */
-  function renderResultsTable(container, rows, columnNames) {
+  function renderResultsTable(container, rows, columnNames, options) {
+    options = options || {};
     container.innerHTML = '';
 
     // Store data on the element for the report generator
@@ -1072,7 +1174,7 @@
       return;
     }
 
-    var PAGE_SIZE = 10;
+    var PAGE_SIZE = options.pageSize || 10;
     var currentPage = 0;
     var sortCol  = -1;
     var sortDir  = 'asc';  // 'asc' | 'desc'
@@ -1081,7 +1183,7 @@
     // Summary
     var summary = document.createElement('div');
     summary.className = 'results-summary';
-    summary.textContent = rows.length + ' row' + (rows.length !== 1 ? 's' : '') + ' returned';
+    summary.textContent = options.summaryText || (rows.length + ' row' + (rows.length !== 1 ? 's' : '') + ' returned');
     container.appendChild(summary);
 
     var wrap = document.createElement('div');
