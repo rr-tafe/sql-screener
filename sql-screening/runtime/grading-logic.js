@@ -6,16 +6,31 @@
   }
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (nodeCrypto) {
 
-  function normalizeRows(rows, expectedColumns) {
+  function normalizeRows(rows, expectedColumns, options) {
+    options = options || {};
     var extracted = rows.map(function (row) {
-      return expectedColumns.map(function (_, idx) {
-        var vals = Array.isArray(row) ? row : Object.values(row);
-        var v = vals[idx];
-        var s = (v === null || v === undefined) ? 'null' : String(v);
-        return isNaN(s) ? s.toLowerCase() : s;
+      var values = Array.isArray(row) ? row : Object.values(row);
+      if (values.length !== expectedColumns.length) {
+        throw new Error('Expected ' + expectedColumns.length + ' columns; received ' + values.length + '.');
+      }
+      return values.map(function (value) {
+        if (value === null) return ['null'];
+        if (typeof value === 'number') {
+          if (!Number.isFinite(value)) throw new Error('Non-finite numeric result.');
+          if (Number.isInteger(value) && !Number.isSafeInteger(value)) throw new Error('Integer exceeds browser precision; return it as text.');
+          if (options.decimalPlaces !== undefined) {
+            var scale = Math.pow(10, options.decimalPlaces);
+            value = Math.sign(value) * Math.floor(Math.abs(value) * scale + 0.5) / scale;
+          }
+          var buffer = new ArrayBuffer(8);
+          new DataView(buffer).setFloat64(0, value === 0 ? 0 : value);
+          return ['number', Array.from(new Uint8Array(buffer), function (byte) { return byte.toString(16).padStart(2, '0'); }).join('')];
+        }
+        var text = String(value);
+        return ['text', options.caseSensitive ? text : text.toLowerCase()];
       });
     });
-    extracted.sort(function (a, b) {
+    if (!options.orderSensitive) extracted.sort(function (a, b) {
       var sa = JSON.stringify(a);
       var sb = JSON.stringify(b);
       return sa < sb ? -1 : sa > sb ? 1 : 0;
@@ -23,17 +38,17 @@
     return extracted;
   }
 
-  function serializeForHash(rows, expectedColumns) {
-    return JSON.stringify(normalizeRows(rows, expectedColumns));
+  function serializeForHash(rows, expectedColumns, options) {
+    return JSON.stringify(normalizeRows(rows, expectedColumns, options));
   }
 
-  function hashNode(rows, expectedColumns) {
-    var payload = serializeForHash(rows, expectedColumns);
+  function hashNode(rows, expectedColumns, options) {
+    var payload = serializeForHash(rows, expectedColumns, options);
     return nodeCrypto.createHash('sha256').update(payload, 'utf8').digest('hex');
   }
 
-  function hashBrowser(rows, expectedColumns) {
-    var payload = serializeForHash(rows, expectedColumns);
+  function hashBrowser(rows, expectedColumns, options) {
+    var payload = serializeForHash(rows, expectedColumns, options);
     var bytes = new TextEncoder().encode(payload);
     return crypto.subtle.digest('SHA-256', bytes).then(function (buf) {
       return Array.from(new Uint8Array(buf))
@@ -42,11 +57,11 @@
     });
   }
 
-  function computeHash(rows, expectedColumns) {
+  function computeHash(rows, expectedColumns, options) {
     if (nodeCrypto) {
-      return Promise.resolve(hashNode(rows, expectedColumns));
+      return Promise.resolve(hashNode(rows, expectedColumns, options));
     }
-    return hashBrowser(rows, expectedColumns);
+    return hashBrowser(rows, expectedColumns, options);
   }
 
   return {

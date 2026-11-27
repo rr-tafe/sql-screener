@@ -44,3 +44,19 @@ jobs:
       - name: Build sample module
         working-directory: sql-screening/builder
         run: python builder.py --module modules/ci-test
+
+      - name: Check grading alignment
+        run: python -B sql-screening/builder/test/test_hash_alignment.py
+
+      - name: Check authoring workflows
+        run: python -B sql-screening/builder/test/test_builder.py
+
+      - name: Install browser test runtime
+        if: runner.os == 'Linux'
+        working-directory: sql-screening/runtime
+        run: npx playwright install --with-deps chromium
+
+      - name: Run offline browser workflows
+        if: runner.os == 'Linux'
+        working-directory: sql-screening/runtime
+        run: npm run test:browser

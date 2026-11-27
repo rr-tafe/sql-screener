@@ -17,16 +17,19 @@ import tempfile
 BUILDER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(BUILDER_DIR)
 BUILDER_PY = os.path.join(BUILDER_DIR, 'builder.py')
-MODULE_DIR = os.path.join(REPO_ROOT, 'modules', 'banking-incentive-campaigns')
-DIST_DIR = os.path.join(REPO_ROOT, 'dist')
-MODULE_ID = 'banking-incentive-campaigns'
+SANDBOX = tempfile.TemporaryDirectory(prefix='sql-builder-test-')
+MODULE_ID = 'ci-test'
+MODULE_DIR = os.path.join(SANDBOX.name, MODULE_ID)
+shutil.copytree(os.path.join(REPO_ROOT, 'modules', MODULE_ID), MODULE_DIR)
+DIST_DIR = os.path.join(SANDBOX.name, 'dist')
 DIST_HTML = os.path.join(DIST_DIR, f'{MODULE_ID}.html')
 
 
 def run_builder():
     result = subprocess.run(
-        [sys.executable, BUILDER_PY, f'--module={MODULE_DIR}'],
-        capture_output=True, text=True, cwd=REPO_ROOT
+        [sys.executable, '-B', BUILDER_PY, f'--module={MODULE_DIR}', f'--output-dir={DIST_DIR}'],
+        capture_output=True, text=True, encoding='utf-8', cwd=REPO_ROOT,
+        env=dict(os.environ, PYTHONIOENCODING='utf-8')
     )
     return result
 
@@ -146,8 +149,8 @@ def test_corrupt_solution():
     # Replace q1 solution with SQL that references a nonexistent table.
     # This causes an sqlite3 exception (ERROR state) which the builder must detect.
     corrupted = re.sub(
-        r'(-- q1\s*\n)([\s\S]*?)(\n-- q2)',
-        r'\1SELECT * FROM table_that_does_not_exist_xyz;\3',
+        r'(-- q1\s*\n)[\s\S]*$',
+        r'\1SELECT * FROM table_that_does_not_exist_xyz;',
         original
     )
     assert corrupted != original, "Corruption replacement did not change solutions.sql"
@@ -191,12 +194,74 @@ def test_missing_csv():
 test("missing CSV data gate", test_missing_csv)
 
 
+def test_success_and_preserve_output():
+    result = run_builder()
+    assert result.returncode == 0, result.stderr + result.stdout
+    with open(DIST_HTML, 'rb') as file:
+        original = file.read()
+    result = subprocess.run([sys.executable, '-B', BUILDER_PY, f'--module={MODULE_DIR}', f'--output-dir={DIST_DIR}', '--max-size-mb=0.01'], capture_output=True)
+    assert result.returncode != 0
+    with open(DIST_HTML, 'rb') as file:
+        assert file.read() == original, 'Failed build must preserve the published assessment'
+
+
+def test_scaffold():
+    destination = os.path.join(SANDBOX.name, 'new-module')
+    result = subprocess.run([sys.executable, '-B', BUILDER_PY, '--scaffold', destination], capture_output=True)
+    assert result.returncode == 0, result.stderr
+    result = subprocess.run([sys.executable, '-B', BUILDER_PY, '--module', destination, '--preview'], capture_output=True)
+    assert result.returncode == 0, result.stderr
+    result = subprocess.run([sys.executable, '-B', BUILDER_PY, '--scaffold', destination], capture_output=True)
+    assert result.returncode != 0, 'Scaffold must not overwrite an existing module'
+
+
+test('successful build and atomic publication', test_success_and_preserve_output)
+test('scaffold and preview', test_scaffold)
+
+
+def test_authoring_diagnostics():
+    questions_path = os.path.join(MODULE_DIR, 'questions.json')
+    with open(questions_path, encoding='utf-8') as file:
+        original = file.read()
+    question = json.loads(original)[0]
+    cases = [
+        ([question, question], 'duplicate'),
+        ([dict(question, prompt='')], 'prompt'),
+        ([dict(question, grading={'decimalPlaces': 20})], 'decimalPlaces'),
+        ([dict(question, incorrectExamples=["SELECT product_id, name FROM products WHERE category='Electronics' ORDER BY product_id"])], 'incorrectExamples'),
+    ]
+    try:
+        for questions, message in cases:
+            with open(questions_path, 'w', encoding='utf-8') as file:
+                json.dump(questions, file)
+            result = run_builder()
+            assert result.returncode != 0 and message.lower() in (result.stdout + result.stderr).lower(), result.stdout + result.stderr
+    finally:
+        with open(questions_path, 'w', encoding='utf-8') as file:
+            file.write(original)
+    csv_path = os.path.join(MODULE_DIR, 'data', 'products.csv')
+    with open(csv_path, encoding='utf-8') as file:
+        original = file.read()
+    try:
+        with open(csv_path, 'w', encoding='utf-8') as file:
+            file.write(original.replace('product_id', 'unknown_column', 1))
+        result = run_builder()
+        assert result.returncode != 0 and 'headers' in (result.stdout + result.stderr), result.stdout + result.stderr
+    finally:
+        with open(csv_path, 'w', encoding='utf-8') as file:
+            file.write(original)
+
+
+test('actionable authoring diagnostics', test_authoring_diagnostics)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
 
 print()
 print(f"Results: {passed} passed, {failed} failed out of {passed + failed} tests")
+SANDBOX.cleanup()
 if failed > 0:
     sys.exit(1)
 else:

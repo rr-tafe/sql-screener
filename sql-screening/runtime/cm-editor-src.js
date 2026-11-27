@@ -5,8 +5,8 @@ import { sql, SQLite } from '@codemirror/lang-sql';
 import { closeBrackets, closeBracketsKeymap, autocompletion } from '@codemirror/autocomplete';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import { format } from 'sql-formatter';
-import initSqlJs from 'sql.js';
+import { formatDialect, sqlite } from 'sql-formatter';
+import { createElement, Play, Square, Download, Upload, Maximize, Minimize, ChevronLeft, ChevronRight, Database, History, Copy, Code, RotateCcw, X } from 'lucide';
 
 /**
  * Dark theme — editor chrome (gutters, selection, cursor, tooltips).
@@ -159,7 +159,7 @@ const lightHighlightStyle = HighlightStyle.define([
  */
 function formatSQL(sqlText) {
   try {
-    return format(sqlText, { language: 'sqlite', tabWidth: 2 });
+    return formatDialect(sqlText, { dialect: sqlite, tabWidth: 2 });
   } catch (e) {
     return sqlText;
   }
@@ -226,12 +226,18 @@ function createEditor(container, options) {
   var isDark = !!options.dark;
 
   var extensions = [
+    EditorView.updateListener.of(function (update) {
+      if (update.docChanged && options.onChange) options.onChange(update.state.doc.toString());
+      if (update.selectionSet && options.onSelection) options.onSelection(!update.state.selection.main.empty);
+    }),
     history(),
     lineNumbers(),
     highlightActiveLine(),
     closeBrackets(),
     autocompletion(),
     keymap.of([
+      { key: 'Mod-Enter', run: function () { if (options.onRun) options.onRun(); return true; } },
+      { key: 'Mod-Shift-Enter', run: function () { if (options.onRunSelection) options.onRunSelection(); return true; } },
       twoSpacesKeymap,
       formatKeymap,
       ...closeBracketsKeymap,
@@ -298,6 +304,14 @@ function createEditor(container, options) {
     setContent: setContent,
     format: doFormatPublic,
     setTheme: setTheme,
+    getSelection: function () { return view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to); },
+    insert: function (text) { view.dispatch(view.state.replaceSelection(text)); view.focus(); },
+    focusError: function (message) {
+      var match = message.match(/near "([^"]+)"/);
+      var position = match ? view.state.doc.toString().indexOf(match[1]) : -1;
+      if (position >= 0) view.dispatch({ selection: { anchor: position, head: position + match[1].length }, scrollIntoView: true });
+      view.focus();
+    },
   };
 }
 
@@ -305,8 +319,11 @@ function createEditor(container, options) {
 if (typeof window !== 'undefined') {
   window.CMEditor = {
     createEditor: createEditor,
-    initSqlJs: initSqlJs,
+    icon: function (name) {
+      var icons = { Play, Square, Download, Upload, Maximize, Minimize, ChevronLeft, ChevronRight, Database, History, Copy, Code, RotateCcw, X };
+      return createElement(icons[name], { width: 16, height: 16, 'aria-hidden': 'true', focusable: 'false' });
+    },
   };
 }
 
-export { createEditor, initSqlJs };
+export { createEditor };

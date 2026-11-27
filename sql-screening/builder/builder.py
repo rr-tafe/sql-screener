@@ -17,6 +17,11 @@ import sqlite3
 import subprocess
 import tempfile
 import argparse
+import math
+import gzip
+import pathlib
+import shutil
+import struct
 
 
 BUILDER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +41,8 @@ def warn(msg):
 
 def _normalize_module_meta(module_meta):
     """Support both legacy and generated module.json field names."""
+    if not isinstance(module_meta, dict):
+        die('module.json must contain a JSON object')
     engine = module_meta.get('engine')
     if not engine:
         engine = module_meta.get('sql_dialect') or module_meta.get('sqlDialect')
@@ -91,15 +98,20 @@ def step_validate_structure(module_dir):
         if not os.path.isfile(fpath):
             die(f"Required file missing: {fpath}")
 
-    # Parse schema to extract table names
     schema_path = os.path.join(module_dir, 'schema.sql')
     with open(schema_path, 'r', encoding='utf-8') as f:
         schema_sql = f.read()
 
-    table_names = re.findall(
-        r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)[`"]?',
-        schema_sql, re.IGNORECASE
-    )
+    schema_conn = sqlite3.connect(':memory:')
+    try:
+        schema_conn.executescript(schema_sql)
+        table_names = [row[0] for row in schema_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid"
+        )]
+    except sqlite3.Error as error:
+        die(f'schema.sql: {error}')
+    finally:
+        schema_conn.close()
     if not table_names:
         die(f"No CREATE TABLE statements found in schema.sql")
 
@@ -130,6 +142,17 @@ def step_engine_check(module_dir):
     with open(os.path.join(module_dir, 'module.json'), 'r', encoding='utf-8') as f:
         module_meta = _normalize_module_meta(json.load(f))
     engine = module_meta.get('engine', '')
+    for field in ('title', 'version', 'description'):
+        if not isinstance(module_meta.get(field), str):
+            die(f'module.json: {field} must be text')
+    dictionary = module_meta.get('dataDictionary', {})
+    if not isinstance(dictionary, dict):
+        die('module.json: dataDictionary must be an object keyed by table name')
+    for table, entry in dictionary.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get('description', ''), str) or not isinstance(entry.get('columns', {}), dict):
+            die(f'dataDictionary.{table}: expected description text and a columns object')
+        if any(not isinstance(description, str) for description in entry.get('columns', {}).values()):
+            die(f'dataDictionary.{table}.columns: descriptions must be text')
     if engine != 'sqlite':
         die(f"Unsupported engine '{engine}' in module.json — expected 'sqlite'")
     print(f"  [2] Engine check passed: {engine}")
@@ -142,7 +165,41 @@ def step_engine_check(module_dir):
 
 def step_question_count(module_dir, module_meta):
     with open(os.path.join(module_dir, 'questions.json'), 'r', encoding='utf-8') as f:
-        questions = _normalize_questions(json.load(f))
+        source = json.load(f)
+    if not isinstance(source, list) or not source or any(not isinstance(question, dict) for question in source):
+        die('questions.json must be a non-empty array of question objects')
+    questions = _normalize_questions(source)
+    seen = set()
+    for question in questions:
+        question_id = question['id']
+        if not re.fullmatch(r'q[1-9]\d*', question_id) or question_id in seen:
+            die(f'questions.json: invalid or duplicate question ID {question_id!r}; use unique q1, q2, ... IDs')
+        seen.add(question_id)
+        if 'title' in question and not isinstance(question['title'], str):
+            die(f'{question_id}: title must be text')
+        if 'difficulty' in question and question['difficulty'] not in ('easy', 'medium', 'hard'):
+            die(f'{question_id}: difficulty must be easy, medium or hard')
+        if not isinstance(question.get('tags', []), list) or any(not isinstance(tag, str) for tag in question.get('tags', [])):
+            die(f'{question_id}: tags must be a list of text labels')
+        if not isinstance(question.get('prompt'), str) or not question['prompt'].strip():
+            die(f'{question_id}: prompt must be non-empty text')
+        columns = question['expectedColumns']
+        if not isinstance(columns, list) or not columns or any(not isinstance(column, str) or not column.strip() for column in columns):
+            die(f'{question_id}: expectedColumns must be a non-empty list of column names')
+        if len(set(columns)) != len(columns):
+            die(f'{question_id}: expectedColumns contains duplicate names')
+        grading = question.get('grading', {})
+        if not isinstance(grading, dict) or set(grading) - {'caseSensitive', 'orderSensitive', 'decimalPlaces', 'requireColumnNames'}:
+            die(f'{question_id}: unsupported grading options')
+        for flag in ('caseSensitive', 'orderSensitive', 'requireColumnNames'):
+            if flag in grading and not isinstance(grading[flag], bool):
+                die(f'{question_id}: grading.{flag} must be true or false')
+        precision = grading.get('decimalPlaces', 0)
+        if type(precision) is not int or not 0 <= precision <= 10:
+            die(f'{question_id}: grading.decimalPlaces must be an integer from 0 to 10')
+        examples = question.get('incorrectExamples', [])
+        if not isinstance(examples, list) or any(not isinstance(example, str) for example in examples):
+            die(f'{question_id}: incorrectExamples must be a list of SQL strings')
     declared = module_meta.get('questionCount', -1)
     actual = len(questions)
     if actual != declared:
@@ -168,20 +225,25 @@ def build_db(module_dir, schema_sql, table_names):
         csv_path = os.path.join(data_dir, f'{table}.csv')
         with open(csv_path, 'r', encoding='utf-8', newline='') as f:
             reader = csv.DictReader(f)
-            rows = list(reader)
-            if not rows:
-                continue
             cols = reader.fieldnames
+            expected = [row[1] for row in conn.execute(f'PRAGMA table_info({quote_ident(table)})')]
+            if not cols or len(set(cols)) != len(cols) or set(cols) != set(expected):
+                die(f'{table}.csv: headers must match schema columns {expected}; received {cols}')
             placeholders = ','.join(['?' for _ in cols])
-            col_str = ','.join(cols)
-            insert_sql = f'INSERT INTO {table} ({col_str}) VALUES ({placeholders})'
-            for row in rows:
+            col_str = ','.join(quote_ident(column) for column in cols)
+            insert_sql = f'INSERT INTO {quote_ident(table)} ({col_str}) VALUES ({placeholders})'
+            for line, row in enumerate(reader, start=2):
+                if None in row or any(value is None for value in row.values()):
+                    die(f'{table}.csv:{line}: wrong number of cells')
                 values = []
                 for col in cols:
                     v = row[col]
                     # Empty CSV cell → SQL NULL
                     values.append(None if v == '' else v)
-                conn.execute(insert_sql, values)
+                try:
+                    conn.execute(insert_sql, values)
+                except sqlite3.Error as error:
+                    die(f'{table}.csv:{line}: {error}')
     conn.commit()
     return conn
 
@@ -196,32 +258,39 @@ def step_build_db(module_dir, schema_sql, table_names):
 # Steps 5–6: Run solutions and compute hashes
 # ─────────────────────────────────────────────────────────────────────────────
 
-def normalize_and_hash(rows, expected_columns):
+def normalize_and_hash(rows, expected_columns, options=None):
     """Canonical normalization + SHA-256. Must match grading-logic.js exactly."""
+    options = options or {}
     extracted = []
     for row in rows:
         if isinstance(row, (list, tuple)):
             vals = list(row)
         else:
             vals = list(row.values())
+        if len(vals) != len(expected_columns):
+            raise ValueError(f'Expected {len(expected_columns)} columns; received {len(vals)}.')
         norm_row = []
-        for idx in range(len(expected_columns)):
-            v = vals[idx] if idx < len(vals) else None
-            if v is None:
-                norm_row.append('null')
-            elif isinstance(v, float) and v == int(v):
-                # Match JavaScript String() behavior: whole-number floats lose the .0
-                # e.g. Python str(5200.0) = '5200.0' but JS String(5200) = '5200'
-                norm_row.append(str(int(v)))
-            elif isinstance(v, (int, float)):
-                norm_row.append(str(v))
+        for value in vals:
+            if value is None:
+                norm_row.append(['null'])
+            elif isinstance(value, (int, float)):
+                if not math.isfinite(value):
+                    raise ValueError('Non-finite numeric result.')
+                if value == int(value) and abs(value) > 9007199254740991:
+                    raise ValueError('Integer exceeds browser precision; return it as text.')
+                if 'decimalPlaces' in options:
+                    scale = 10 ** options['decimalPlaces']
+                    value = math.copysign(math.floor(abs(value) * scale + 0.5), value) / scale
+                if value == 0:
+                    value = 0
+                norm_row.append(['number', struct.pack('>d', float(value)).hex()])
             else:
-                # Matches grading-logic.js: non-numeric strings are lowercased so
-                # UPPER()/LOWER() variations on the same data hash identically.
-                norm_row.append(str(v).lower())
+                text = str(value)
+                norm_row.append(['text', text if options.get('caseSensitive') else text.lower()])
         extracted.append(norm_row)
 
-    extracted.sort(key=lambda r: json.dumps(r))
+    if not options.get('orderSensitive'):
+        extracted.sort(key=lambda row: json.dumps(row, separators=(',', ':'), ensure_ascii=False).encode('utf-16-be'))
     # ensure_ascii=False so Unicode characters are not escaped to \uXXXX.
     # This matches JavaScript's JSON.stringify behavior.
     payload = json.dumps(extracted, separators=(',', ':'), ensure_ascii=False)
@@ -236,6 +305,8 @@ def parse_solutions(solutions_sql):
     i = 1
     while i + 1 < len(parts):
         qid = parts[i].strip().lower()
+        if qid in blocks:
+            die(f'solutions.sql: duplicate block {qid}')
         sql_block = parts[i + 1].strip()
         blocks[qid] = sql_block
         i += 2
@@ -259,12 +330,22 @@ def step_run_solutions(module_dir, conn, questions):
 
         try:
             cursor = conn.execute(sql_block)
+            actual_columns = [column[0] for column in cursor.description or []]
+            if [column.lower() for column in actual_columns] != [column.lower() for column in expected_cols]:
+                die(f'{qid}: solution columns {actual_columns} do not match expectedColumns {expected_cols}')
             rows = cursor.fetchall()
         except Exception as e:
             die(f"Solution for '{qid}' raised an exception: {e}")
 
-        h = normalize_and_hash(rows, expected_cols)
+        h = normalize_and_hash(rows, expected_cols, q.get('grading'))
         answer_hashes[qid] = h
+        for example in q.get('incorrectExamples', []):
+            try:
+                example_rows = conn.execute(example).fetchall()
+                if normalize_and_hash(example_rows, expected_cols, q.get('grading')) == h:
+                    die(f'{qid}: an incorrectExamples query passes; improve the dataset or the example')
+            except (sqlite3.Error, ValueError) as error:
+                die(f'{qid}: incorrectExamples must be executable with the expected column count: {error}')
 
     print(f"  [5-6] Solutions executed and hashed: {list(answer_hashes.keys())}")
     return answer_hashes, solution_blocks
@@ -284,7 +365,7 @@ def step_validate_solutions(conn, questions, solution_blocks, answer_hashes):
         try:
             cursor = conn.execute(sql_block)
             rows = cursor.fetchall()
-            h = normalize_and_hash(rows, expected_cols)
+            h = normalize_and_hash(rows, expected_cols, q.get('grading'))
             if h != answer_hashes[qid]:
                 failed.append((qid, 'HASH_MISMATCH'))
         except Exception as e:
@@ -325,33 +406,32 @@ def extract_table_body(schema_sql, table_name):
     return schema_sql[start:i - 1]
 
 
-def step_derive_schema_json(schema_sql):
-    # Find all table names in declaration order
-    table_names = re.findall(
-        r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"]?(\w+)[`"]?\s*\(',
-        schema_sql, re.IGNORECASE
-    )
+def quote_ident(name):
+    return '"' + name.replace('"', '""') + '"'
 
-    tables = {}
+
+def step_derive_schema_json(conn, dictionary=None):
+    dictionary = dictionary or {}
+    tables, details = {}, {}
+    table_names = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+    if set(dictionary) - set(table_names):
+        die(f'dataDictionary: unknown tables {sorted(set(dictionary) - set(table_names))}')
     for table_name in table_names:
-        body = extract_table_body(schema_sql, table_name)
-        if body is None:
-            continue
-        columns = []
-        for line in body.split('\n'):
-            line = line.strip().rstrip(',')
-            if not line:
-                continue
-            # Skip table-level constraints
-            if re.match(r'(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)\b', line, re.IGNORECASE):
-                continue
-            # Column name is the first token
-            col_match = re.match(r'[`"]?(\w+)[`"]?', line)
-            if col_match:
-                columns.append(col_match.group(1))
-        tables[table_name] = columns
-
-    schema_json = {'tables': tables}
+        info = list(conn.execute(f'PRAGMA table_info({quote_ident(table_name)})'))
+        relations = list(conn.execute(f'PRAGMA foreign_key_list({quote_ident(table_name)})'))
+        authored = dictionary.get(table_name, {})
+        tables[table_name] = [column[1] for column in info]
+        if set(authored.get('columns', {})) - set(tables[table_name]):
+            die(f'dataDictionary.{table_name}: unknown column names')
+        details[table_name] = {
+            'description': authored.get('description', ''),
+            'rowCount': conn.execute(f'SELECT COUNT(*) FROM {quote_ident(table_name)}').fetchone()[0],
+            'columns': [{'name': column[1], 'type': column[2], 'nullable': not bool(column[3] or column[5]),
+                         'primaryKey': column[5], 'description': authored.get('columns', {}).get(column[1], '')} for column in info],
+            'foreignKeys': [{'id': relation[0], 'sequence': relation[1], 'table': relation[2], 'from': relation[3],
+                             'to': relation[4]} for relation in relations],
+        }
+    schema_json = {'tables': tables, 'details': details}
     print(f"  [8] SQL schema JSON derived: {list(tables.keys())}")
     return schema_json
 
@@ -375,7 +455,7 @@ def step_serialize_dataset(module_dir, schema_sql, table_names):
         os.unlink(tmp.name)
     conn2.close()
 
-    encoded = base64.b64encode(db_bytes).decode('ascii')
+    encoded = base64.b64encode(gzip.compress(db_bytes, mtime=0)).decode('ascii')
     print(f"  [9] Dataset serialized: {len(db_bytes)} bytes → {len(encoded)} base64 chars")
     return encoded
 
@@ -423,6 +503,8 @@ def _minify_via_esbuild(source, loader):
 
 def step_assemble_html(module_dir, module_meta, questions, answer_hashes,
                        schema_json, dataset_b64):
+    subprocess.run(['node', '-e', "require('esbuild').buildSync({entryPoints:['cm-editor-src.js'],bundle:true,minify:true,outfile:'cm-editor-bundle.js'})"],
+                   cwd=RUNTIME_DIR, check=True, timeout=90)
     template_path = os.path.join(RUNTIME_DIR, 'template.html')
     if not os.path.isfile(template_path):
         die(f"runtime/template.html not found: {template_path}")
@@ -444,7 +526,7 @@ def step_assemble_html(module_dir, module_meta, questions, answer_hashes,
         die("sql.js WASM file not found in node_modules. Run 'npm install' in runtime/")
 
     with open(wasm_path, 'rb') as f:
-        wasm_b64 = base64.b64encode(f.read()).decode('ascii')
+        wasm_b64 = base64.b64encode(gzip.compress(f.read(), mtime=0)).decode('ascii')
 
     # Read runtime files
     def read_runtime(name):
@@ -457,7 +539,10 @@ def step_assemble_html(module_dir, module_meta, questions, answer_hashes,
     grading_js = read_runtime('grading-logic.js')
     cm_bundle_js = read_runtime('cm-editor-bundle.js')
     app_js = read_runtime('app.js')
-    style_css = read_runtime('style.css')
+    style_css = read_runtime('style.css') + '\n' + read_runtime('workspace.css')
+    worker_js = read_runtime('node_modules/sql.js/dist/sql-wasm.js') + '\n' + read_runtime('query-engine.js')
+    worker_js = _minify_via_esbuild(worker_js, 'js')
+    print(f'  [10] Payload bytes: compressed engine={len(wasm_b64):,}, compressed dataset={len(dataset_b64):,}, worker={len(worker_js.encode("utf-8")):,}')
 
     # Minify JS and CSS before injection
     orig_cm_len = len(cm_bundle_js.encode('utf-8'))
@@ -497,9 +582,9 @@ def step_assemble_html(module_dir, module_meta, questions, answer_hashes,
         )
 
     # Serialize JSON payloads
-    questions_json_str = json.dumps(questions, ensure_ascii=False)
+    questions_json_str = json.dumps([{key: value for key, value in question.items() if key != 'incorrectExamples'} for question in questions], ensure_ascii=False).replace('<', '\\u003c')
     hashes_json_str = json.dumps(answer_hashes, ensure_ascii=False)
-    schema_json_str = json.dumps(schema_json, ensure_ascii=False)
+    schema_json_str = json.dumps(schema_json, ensure_ascii=False).replace('<', '\\u003c')
 
     # Inject all placeholders (MUST use lambda form)
     html = inject(html, '__SQL_JS_WASM_B64__', wasm_b64)
@@ -509,9 +594,12 @@ def step_assemble_html(module_dir, module_meta, questions, answer_hashes,
     html = inject(html, '__QUESTIONS_JSON__', questions_json_str)
     html = inject(html, '__ANSWER_HASHES_JSON__', hashes_json_str)
     html = inject(html, '__SQL_SCHEMA_JSON__', schema_json_str)
-    html = inject(html, '__MODULE_TITLE__', module_meta['title'])
-    html = inject(html, '__MODULE_VERSION__', module_meta['version'])
-    html = inject(html, '__MODULE_DESCRIPTION__', module_meta.get('description', ''))
+    html = inject(html, '__MODULE_TITLE_JSON__', json.dumps(module_meta['title']).replace('<', '\\u003c'))
+    html = inject(html, '__MODULE_VERSION_JSON__', json.dumps(module_meta['version']).replace('<', '\\u003c'))
+    html = inject(html, '__MODULE_DESCRIPTION_JSON__', json.dumps(module_meta.get('description', '')).replace('<', '\\u003c'))
+    html = inject(html, '__MODULE_ID_JSON__', json.dumps(os.path.basename(module_dir)))
+    html = inject(html, '__WORKER_SOURCE_JSON__', json.dumps(worker_js).replace('<', '\\u003c'))
+    html = inject(html, '__BUILD_ID_JSON__', json.dumps(hashlib.sha256((dataset_b64 + questions_json_str + hashes_json_str).encode('utf-8')).hexdigest()))
     html = inject(html, '__APP_JS__', app_js)
     html = inject(html, '__STYLE_CSS__', style_css)
 
@@ -548,18 +636,18 @@ def step_write_outputs(html, module_dir, module_id, dist_dir):
     return html_path
 
 
-def step_run_js_tests(module_id, html_path, dist_dir):
+def step_run_js_tests(module_id, html_path, module_dir):
     test_files = [
+        os.path.join(RUNTIME_DIR, 'test', 'engine_test.js'),
         os.path.join(RUNTIME_DIR, 'test', 'integration_test.js'),
         os.path.join(RUNTIME_DIR, 'test', 'feature_test.js'),
     ]
     for test_file in test_files:
         if not os.path.isfile(test_file):
-            warn(f"Test file not found (skipping): {test_file}")
-            continue
+            die(f'Required test file missing: {test_file}')
 
         result = subprocess.run(
-            ['node', test_file, f'--module={module_id}'],
+            ['node', test_file, f'--module={module_id}', f'--html={html_path}', f'--module-dir={module_dir}'],
             capture_output=False,
             cwd=REPO_ROOT
         )
@@ -586,15 +674,28 @@ def step_size_report(html_path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description='Build SQL screening candidate HTML')
-    parser.add_argument('--module', required=True,
+    parser.add_argument('--module',
                         help='Path to module directory (e.g. modules/banking-incentive-campaigns)')
+    parser.add_argument('--scaffold', help='Create a new module at this path (never overwrites)')
+    parser.add_argument('--validate-only', action='store_true', help='Validate without generating HTML')
+    parser.add_argument('--preview', action='store_true', help='Show solution columns and up to five rows without generating HTML')
+    parser.add_argument('--output-dir', default=DIST_DIR, help='Destination for successful builds')
+    parser.add_argument('--max-size-mb', type=float, default=5, help='Maximum published HTML size')
     args = parser.parse_args()
+
+    if args.scaffold:
+        scaffold_module(pathlib.Path(args.scaffold))
+        return
+    if not args.module:
+        parser.error('--module or --scaffold is required')
 
     module_path = args.module
     if not os.path.isabs(module_path):
-        module_path = os.path.join(REPO_ROOT, module_path)
-    module_path = os.path.normpath(module_path)
+        module_path = module_path if os.path.isdir(module_path) else os.path.join(REPO_ROOT, module_path)
+    module_path = os.path.abspath(os.path.normpath(module_path))
 
     if not os.path.isdir(module_path):
         die(f"Module directory not found: {module_path}")
@@ -605,8 +706,6 @@ def main():
     print(f"Runtime dir:     {RUNTIME_DIR}")
     print(f"Dist dir:        {DIST_DIR}\n")
 
-    os.makedirs(DIST_DIR, exist_ok=True)
-
     # Run all pipeline steps
     schema_sql, table_names = step_validate_structure(module_path)
     module_meta = step_engine_check(module_path)
@@ -614,7 +713,15 @@ def main():
     conn = step_build_db(module_path, schema_sql, table_names)
     answer_hashes, solution_blocks = step_run_solutions(module_path, conn, questions)
     step_validate_solutions(conn, questions, solution_blocks, answer_hashes)
-    schema_json = step_derive_schema_json(schema_sql)
+    schema_json = step_derive_schema_json(conn, module_meta.get('dataDictionary'))
+    if args.preview:
+        for question in questions:
+            cursor = conn.execute(solution_blocks[question['id']])
+            print(json.dumps({'question': question['id'], 'columns': [column[0] for column in cursor.description], 'sample': cursor.fetchmany(5)}, ensure_ascii=False))
+    if args.validate_only or args.preview:
+        conn.close()
+        print('Validation complete. No assessment files written.')
+        return
     dataset_b64 = step_serialize_dataset(module_path, schema_sql, table_names)
 
     html = step_assemble_html(
@@ -622,12 +729,38 @@ def main():
         answer_hashes, schema_json, dataset_b64
     )
 
-    html_path = step_write_outputs(html, module_path, module_id, DIST_DIR)
-    step_run_js_tests(module_id, html_path, DIST_DIR)
-    step_size_report(html_path)
+    output_dir = os.path.abspath(args.output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    if len(html.encode('utf-8')) > args.max_size_mb * 1024 * 1024:
+        die(f'Assessment exceeds the {args.max_size_mb:g} MB size budget; no output published')
+    with tempfile.TemporaryDirectory(prefix='.assessment-build-', dir=output_dir) as staging:
+        staged_html = step_write_outputs(html, module_path, module_id, staging)
+        step_run_js_tests(module_id, staged_html, module_path)
+        step_size_report(staged_html)
+        for name in (f'{module_id}-README.md', f'{module_id}.html'):
+            os.replace(os.path.join(staging, name), os.path.join(output_dir, name))
+    html_path = os.path.join(output_dir, f'{module_id}.html')
 
     print(f"\nBuild complete: {html_path}\n")
     conn.close()
+
+
+def scaffold_module(destination):
+    if destination.exists():
+        die(f'Scaffold destination already exists: {destination}')
+    destination.mkdir(parents=True)
+    (destination / 'data').mkdir()
+    files = {
+        'module.json': json.dumps({'title': destination.name, 'version': '1.0.0', 'description': 'Explore customer balances.', 'engine': 'sqlite', 'questionCount': 1}, indent=2),
+        'questions.json': json.dumps([{'id': 'q1', 'title': 'Customer balances', 'difficulty': 'easy', 'prompt': 'Return customer_id and balance for every customer. Row order does not matter.', 'expectedColumns': ['customer_id', 'balance'], 'incorrectExamples': ['SELECT customer_id, balance FROM customers WHERE balance > 0']}], indent=2),
+        'schema.sql': 'CREATE TABLE customers (customer_id INTEGER PRIMARY KEY, balance REAL NOT NULL);\n',
+        'solutions.sql': '-- q1\nSELECT customer_id, balance FROM customers;\n',
+        'data/customers.csv': 'customer_id,balance\n1,100.50\n2,0\n3,-25\n',
+        'README.md': '# ' + destination.name + '\n\nInterviewer notes: check inclusion of zero and negative balances.\n',
+    }
+    for name, content in files.items():
+        (destination / name).write_text(content, encoding='utf-8')
+    print(f'Created module: {destination}. Run --module "{destination}" --preview next.')
 
 
 if __name__ == '__main__':

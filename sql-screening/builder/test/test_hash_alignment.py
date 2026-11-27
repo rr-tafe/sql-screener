@@ -18,30 +18,11 @@ RUNTIME_DIR = os.path.join(REPO_ROOT, 'runtime')
 GRADING_JS = os.path.join(RUNTIME_DIR, 'grading-logic.js')
 
 
-def py_normalize_and_hash(rows, expected_columns):
-    """Canonical normalization + SHA-256 — mirrors builder.py and grading-logic.js."""
-    extracted = []
-    for row in rows:
-        if isinstance(row, (list, tuple)):
-            vals = list(row)
-        else:
-            vals = list(row.values())
-        norm_row = []
-        for idx in range(len(expected_columns)):
-            v = vals[idx] if idx < len(vals) else None
-            if v is None:
-                norm_row.append('null')
-            elif isinstance(v, float) and v == int(v):
-                norm_row.append(str(int(v)))
-            else:
-                norm_row.append(str(v))
-        extracted.append(norm_row)
-    extracted.sort(key=lambda r: json.dumps(r, separators=(',', ':'), ensure_ascii=False))
-    payload = json.dumps(extracted, separators=(',', ':'), ensure_ascii=False)
-    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+sys.path.insert(0, BUILDER_DIR)
+from builder import normalize_and_hash as py_normalize_and_hash
 
 
-def js_hash(rows, expected_columns):
+def js_hash(rows, expected_columns, options=None):
     """Call grading-logic.js via Node.js and capture the hex hash."""
     rows_json = json.dumps(rows)
     cols_json = json.dumps(expected_columns)
@@ -49,7 +30,7 @@ def js_hash(rows, expected_columns):
 const g = require({json.dumps(GRADING_JS)});
 const rows = {rows_json};
 const cols = {cols_json};
-g.computeHash(rows, cols).then(function(h) {{
+g.computeHash(rows, cols, {json.dumps(options or {})}).then(function(h) {{
   process.stdout.write(h);
 }}).catch(function(e) {{
   process.stderr.write(String(e));
@@ -66,6 +47,11 @@ g.computeHash(rows, cols).then(function(h) {{
 
 
 TEST_CASES = [
+    {'name': 'adjacent precise numbers', 'rows': [[1234567890123456], [1234567890123457], [0.1], [1e-10]], 'cols': ['value']},
+    {'name': 'typed NULL, text and numbers', 'rows': [[None], ['null'], [1], ['1'], [1.25], [-0.0]], 'cols': ['value']},
+    {'name': 'case and astral sorting', 'rows': [['HELLO'], ['\U0001f600'], ['\ue000']], 'cols': ['value']},
+    {'name': 'explicit precision', 'rows': [[1.234], [-1.236]], 'cols': ['value'], 'options': {'decimalPlaces': 2}},
+    {'name': 'ordered and case-sensitive', 'rows': [['Z'], ['a']], 'cols': ['value'], 'options': {'orderSensitive': True, 'caseSensitive': True}},
     {
         'name': 'multi-row result',
         'rows': [['alice', '42'], ['bob', '100']],
@@ -117,14 +103,22 @@ def run_tests():
     passed = 0
     failed = 0
 
+    assert py_normalize_and_hash([[None]], ['value']) != py_normalize_and_hash([['null']], ['value'])
+    assert py_normalize_and_hash([[1234567890123456]], ['value']) != py_normalize_and_hash([[1234567890123457]], ['value'])
+    try:
+        py_normalize_and_hash([[1, 2]], ['value'])
+        raise AssertionError('Extra columns were accepted')
+    except ValueError:
+        pass
+
     for case in TEST_CASES:
         name = case['name']
         rows = case['rows']
         cols = case['cols']
 
-        py_hash = py_normalize_and_hash(rows, cols)
+        py_hash = py_normalize_and_hash(rows, cols, case.get('options'))
         try:
-            js_h = js_hash(rows, cols)
+            js_h = js_hash(rows, cols, case.get('options'))
         except Exception as e:
             print(f"FAIL [{name}]: JS execution error — {e}")
             failed += 1

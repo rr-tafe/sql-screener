@@ -528,6 +528,7 @@ npm install</code></pre>
 
     <!-- B2 -->
     <h2 id="b2">B2 · Run the builder</h2>
+    <p>For a working starting point, use <code>python builder/builder.py --scaffold modules/my-module</code>. Add <code>--validate-only</code> to validate an existing module without writing files, or <code>--preview</code> to inspect solution columns and sample rows. The authoring guide documents optional grading rules, question titles, topic tags, business descriptions and incorrect-answer examples.</p>
 
     <p>From the <code>sql-screening/</code> directory, run:</p>
 
@@ -551,17 +552,17 @@ npm install</code></pre>
         <tr><td>[4]</td><td>Builds an in-memory SQLite database from the schema and CSV data</td></tr>
         <tr><td>[5–6]</td><td>Runs every reference solution and computes an answer hash for each</td></tr>
         <tr><td>[7]</td><td><strong>Validation gate</strong> — every solution must match its hash. Fails the build if any solution errors or produces unexpected results</td></tr>
-        <tr><td>[8]</td><td>Derives a schema map for the editor's autocomplete feature</td></tr>
-        <tr><td>[9]</td><td>Serialises the SQLite database to base64 for embedding in the HTML</td></tr>
+        <tr><td>[8]</td><td>Reads SQLite metadata for autocomplete, column types, keys and declared relationships</td></tr>
+        <tr><td>[9]</td><td>Gzip-compresses binary payloads before base64 embedding</td></tr>
         <tr><td>[10]</td><td>Assembles the final HTML, inlining all assets</td></tr>
-        <tr><td>[11]</td><td>Writes output files to <code>dist/</code></td></tr>
+        <tr><td>[11]</td><td>Writes output files into a temporary staging directory</td></tr>
         <tr><td>[12]</td><td>Runs the JavaScript test harness to verify the assembled HTML</td></tr>
-        <tr><td>[13]</td><td>Reports file size; warns if over 5 MB</td></tr>
+        <tr><td>[13]</td><td>Reports payload sizes and enforces the size budget before publication (default 5 MiB, configurable with --max-size-mb)</td></tr>
       </tbody>
     </table>
 
     <div class="warning">
-      <strong>The build is all-or-nothing.</strong> If any step fails, no output file is written (and any previously written output is deleted). Fix the reported error and re-run.
+      <strong>Validation precedes publication.</strong> A failed build discards staged output and preserves existing published assessments. The editor bundle is rebuilt automatically. Fix the reported error and re-run.
     </div>
 
     <h3>Successful output</h3>
