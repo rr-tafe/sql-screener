@@ -1,0 +1,30 @@
+'use strict';
+const assert = require('node:assert/strict');
+const initSqlJs = require('sql.js');
+const { createExecutor } = require('../query-engine.js');
+const grading = require('../grading-logic.js');
+
+(async function () {
+  const SQL = await initSqlJs();
+  const database = new SQL.Database();
+  database.run('CREATE TABLE customers (id INTEGER); INSERT INTO customers VALUES (1), (2)');
+  const executor = createExecutor(SQL, database.export());
+  database.close();
+  assert.equal(executor.execute('-- note\nSELECT * FROM customers').rows.length, 2);
+  assert.throws(() => executor.execute('SELECT 1; DROP TABLE customers'), /permitted/);
+  assert.throws(() => executor.execute('WITH selected AS (SELECT 1) DELETE FROM customers'), /read-only/);
+  assert.throws(() => executor.execute("SELECT load_extension('missing')"));
+  assert.equal(executor.execute('SELECT * FROM customers').rows.length, 2);
+  assert.equal(executor.execute('CREATE TEMP TABLE chosen AS SELECT * FROM customers; SELECT * FROM chosen').rows.length, 2);
+  assert.throws(() => executor.execute('CREATE TEMP TABLE rolled_back AS SELECT 1; DELETE FROM customers'));
+  assert.throws(() => executor.execute('SELECT * FROM rolled_back'), /no such table/);
+  assert.equal(executor.execute('SELECT 1 AS value WHERE 0').columns[0], 'value');
+  const manyRows = 'WITH RECURSIVE numbers(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM numbers WHERE value < 50001) SELECT * FROM numbers';
+  assert.equal(executor.execute(manyRows).truncated, true);
+  assert.throws(() => executor.execute(manyRows, { graded: true }), /grading limit/);
+  assert.notEqual(await grading.computeHash([[null]], ['value']), await grading.computeHash([['null']], ['value']));
+  assert.throws(() => grading.computeHash([[1, 2]], ['value']), /columns/);
+  assert.notEqual(await grading.computeHash([[1], [2]], ['value'], { orderSensitive: true }), await grading.computeHash([[2], [1]], ['value'], { orderSensitive: true }));
+  executor.close();
+  console.log('Engine and grading checks passed.');
+}()).catch(error => { console.error(error); process.exitCode = 1; });

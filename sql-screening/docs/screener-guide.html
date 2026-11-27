@@ -355,19 +355,19 @@
 
   <ol>
     <li>Tell the candidate: <em>"Please click the Finish Work button in the sidebar whenever you're ready."</em></li>
-    <li>A confirmation dialog appears on their screen — they confirm.</li>
-    <li>A results file downloads automatically to their browser's Downloads folder. A brief notification confirms the download.</li>
+    <li>A review dialog lists question statuses, including unrun edits. They can revisit questions or restore the last executed SQL.</li>
+    <li>They choose Download report (HTML) or Download JSON, then check their browser's Downloads folder.</li>
   </ol>
 
   <div class="tip">
-    Do not ask them to click Finish Work until you are sure the session is complete — once they confirm, the download triggers immediately.
+    Finish Work opens a review, not an irreversible submission. Keep working returns to the assessment. Edited drafts do not inherit earlier passing grades.
   </div>
 
 
   <!-- ──────────────────────────────────────────────────────── -->
   <h2 id="results">5 · Getting results back</h2>
 
-  <p>When the candidate clicks Finish Work, a file named something like <code>Banking_Incentive_Campaigns_results.html</code> downloads automatically to their default Downloads folder.</p>
+  <p>After Finish Work, ask the candidate to choose Download report. The filename contains the module identifier and candidate name and ends in <code>_results.html</code>. JSON results are also available; recovery checkpoints are not final reports.</p>
 
   <h3>How to receive the file</h3>
   <p>Ask the candidate to send you this file. Common options:</p>
@@ -382,7 +382,7 @@
   <ol>
     <li><strong>Check the Downloads folder</strong> — it may have downloaded silently without a notification.</li>
     <li><strong>Check the browser's download bar</strong> — some browsers (Firefox, Edge) show downloads in a bar at the bottom or top of the window.</li>
-    <li><strong>A print/preview window may also open</strong> in a separate tab. If the browser blocked it, the results file was still downloaded — the download always completes regardless of pop-up settings.</li>
+    <li><strong>No print window is required.</strong> Open the downloaded HTML report and use the browser's Print command if needed.</li>
     <li>If there is truly no file, ask them to check for any browser download permission dialogs they may have dismissed.</li>
   </ol>
 
@@ -396,9 +396,10 @@
   <ul>
     <li><strong>Candidate name and timestamps</strong> — when the test started, when it was exported, total elapsed time.</li>
     <li><strong>Overall score</strong> — number of questions passed out of the total.</li>
-    <li><strong>Notes</strong> — anything the candidate typed in the notes area during the test.</li>
+    <li><strong>Scorecard and reviewer notes</strong> — question difficulty, authored topic tags, recent run counts, and an editable notes area for printing.</li>
     <li><strong>Per-question breakdown</strong> — the question prompt, expected columns, the SQL they submitted, their final status (PASS / FAIL / ERROR / NOT ATTEMPTED), and the result rows they got back.</li>
-    <li><strong>Playground queries</strong> — all successful exploratory queries from the scratch-pad, in the order they were run.</li>
+    <li><strong>Execution evidence</strong> — exact executed SQL and status, distinguished from edited drafts. Result samples are limited to 500 rows; grading uses complete results.</li>
+    <li><strong>Recent history</strong> — up to 20 runs per editor, including unsuccessful attempts, newest first.</li>
   </ul>
 
   <h3>How to interpret the score</h3>
@@ -480,7 +481,7 @@
   </ul>
 
   <h3>SQL queries are not running — "Database not yet initialized"</h3>
-  <p>The SQL engine loads when the test begins. If this error appears, wait a few seconds and try again. On slow machines this can take 5–10 seconds. If it persists, refreshing the page will clear the session and require them to start over — so only do that if the test has not yet started.</p>
+  <p>Use a current browser. The SQL engine initializes in a background worker. For a running query, use Cancel first. If reload is necessary, download a checkpoint and choose Resume afterward; use Restore checkpoint if browser storage is unavailable. Checkpoints must match the same assessment build.</p>
 
   <h3>The results file was not downloaded</h3>
   <p>See <a href="#results">Section 5</a>. The download usually completes silently. Ask them to check their Downloads folder before concluding the file is missing.</p>

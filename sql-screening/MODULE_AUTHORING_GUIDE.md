@@ -69,9 +69,8 @@ modules/
 
 Copy all generated files into this folder. Make sure `data/` contains one CSV per table in `schema.sql`.
 
-For format details, see:
-- [contracts/module-authoring.md](contracts/module-authoring.md)
-- [contracts/template-document.md](contracts/template-document.md)
+For format details, see [template/20-required-file-specs.txt](template/20-required-file-specs.txt)
+and the optional metadata section below.
 
 ---
 
@@ -92,7 +91,7 @@ The builder will:
 6. Copy the README to dist/
 7. Run the JS test harness to verify the assembled HTML
 
-On success, three files are written to `dist/`:
+On success, two files are written to `dist/`:
 
 ```
 dist/
@@ -115,12 +114,10 @@ The interviewer should keep `dist/my-new-module-README.md` for reference during 
 
 ## Validation reference
 
-Full validation scenarios are documented in [quickstart.md](quickstart.md):
-- **Scenario B1**: Successful build
-- **Scenario B2–B5**: Validation gate scenarios (engine, solution, missing files)
-- **Scenario C1**: Automated JS test harness
-- **Scenario C2**: Manual browser walkthrough
-- **Scenario C3**: Offline verification
+Run `python -B builder/test/test_builder.py` from `sql-screening/` for isolated
+validation and publication tests. Run `npm --prefix runtime run test:browser`
+after building `ci-test` and installing the Playwright Chromium browser for an
+offline browser walkthrough. A failed build preserves previously published files.
 
 ---
 
@@ -156,3 +153,84 @@ cd runtime && npm run build
 ```
 
 Then re-run the builder.
+
+## Scaffold, validate and preview
+
+From `sql-screening/`:
+
+```bash
+python builder/builder.py --scaffold modules/my-module
+python builder/builder.py --module modules/my-module --validate-only
+python builder/builder.py --module modules/my-module --preview
+python builder/builder.py --module modules/my-module --output-dir dist --max-size-mb 5
+```
+
+Preview prints solution columns and up to five sample result rows without writing
+assessment files. Do not distribute that output to candidates. Builds compile the
+editor automatically, gzip binary assets, run tests in staging, and only then
+publish. Source paths work from either the repository root or `sql-screening/`.
+
+## Optional question metadata
+
+```json
+{
+   "id": "q1",
+   "title": "Campaign response rates",
+   "difficulty": "medium",
+   "tags": ["aggregation", "date boundaries"],
+   "prompt": "Return campaign_code and response_rate...",
+   "expectedColumns": ["campaign_code", "response_rate"],
+   "grading": {
+      "caseSensitive": false,
+      "orderSensitive": false,
+      "requireColumnNames": false,
+      "decimalPlaces": 2
+   },
+   "incorrectExamples": ["SELECT campaign_code, 0 AS response_rate FROM campaigns"]
+}
+```
+
+The default ignores row order and text case, but preserves NULL, numeric and text
+types and requires the exact number of columns. Numeric values are compared
+exactly unless `decimalPlaces` (0-10) requests rounding before comparison.
+Rounding is half-away-from-zero on the binary numeric value, not an absolute-error
+tolerance. Only use it when the prompt states the same precision rule. Integers
+beyond JavaScript's safe range must be returned as text. Duplicate rows matter.
+Reference-solution column names must match `expectedColumns` in order.
+
+Use `orderSensitive` only when the prompt explicitly requires an order, including
+a deterministic tie-breaker. `requireColumnNames` makes candidate aliases exact.
+Explain any case sensitivity or precision requirements in the question.
+
+`incorrectExamples` are optional executable, same-shape queries representing
+common mistakes. The build fails if one produces the reference answer. They are
+not included in the candidate HTML. This checks your dataset's ability to expose
+known mistakes; it does not prove that a question is unambiguous.
+
+## Business descriptions
+
+Add optional descriptions to `module.json`:
+
+```json
+{
+   "dataDictionary": {
+      "customers": {
+         "description": "One row per customer.",
+         "columns": { "customer_id": "Stable customer identifier." }
+      }
+   }
+}
+```
+
+Types, keys, row counts and declared foreign-key relationships come from SQLite
+metadata. Descriptions are authored, not inferred. The data explorer can insert
+identifiers and preview up to 100 rows without replacing the candidate's answer.
+
+## Runtime limits
+
+Queries execute in a cancellable worker with an 8-second deadline. Base tables
+are read-only; SELECT, read-only WITH and CREATE TEMP TABLE are supported.
+Successful temporary-table setup is replayed after cancellation and recovery.
+Grading accepts at most 50,000 rows and 4 MB of result data; exceeding a limit is an
+error, never a grade on a truncated result. The UI/report retains up to 500 rows.
+Build and browser-test representative solutions before distributing a module.

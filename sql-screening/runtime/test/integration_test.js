@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('node:crypto');
+const { gunzipSync } = require('node:zlib');
 
 const args = process.argv.slice(2);
 const moduleArg = args.find(a => a.startsWith('--module='));
@@ -21,8 +22,8 @@ if (!moduleArg) {
 const moduleId = moduleArg.split('=')[1];
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const DIST_HTML = path.join(REPO_ROOT, 'dist', `${moduleId}.html`);
-const MODULE_DIR = path.join(REPO_ROOT, 'modules', moduleId);
+const DIST_HTML = args.find(arg => arg.startsWith('--html='))?.slice(7) || path.join(REPO_ROOT, 'dist', `${moduleId}.html`);
+const MODULE_DIR = args.find(arg => arg.startsWith('--module-dir='))?.slice(13) || path.join(REPO_ROOT, 'modules', moduleId);
 const RUNTIME_DIR = path.join(REPO_ROOT, 'runtime');
 const GRADING_LOGIC = path.join(RUNTIME_DIR, 'grading-logic.js');
 
@@ -92,6 +93,7 @@ const hashesFromHtml = extractVar(htmlContent, 'ANSWER_HASHES_JSON');
 const schemaFromHtml = extractVar(htmlContent, 'SQL_SCHEMA_JSON');
 const wasmB64 = extractVarStr(htmlContent, 'SQL_JS_WASM_B64');
 const dbB64 = extractVarStr(htmlContent, 'DATASET_DB_B64');
+const decode = value => htmlContent.includes('var PAYLOAD_ENCODING = "gzip"') ? gunzipSync(Buffer.from(value, 'base64')) : Buffer.from(value, 'base64');
 
 ok(Array.isArray(questionsFromHtml) && questionsFromHtml.length > 0, 'QUESTIONS_JSON extracted');
 ok(hashesFromHtml && typeof hashesFromHtml === 'object', 'ANSWER_HASHES_JSON extracted');
@@ -112,14 +114,14 @@ const wasmSourceB64 = wasmPath && fs.existsSync(wasmPath)
   : null;
 
 if (wasmSourceB64) {
-  ok(wasmB64 === wasmSourceB64, 'WASM base64 matches source file (round-trip)');
+  ok(decode(wasmB64).toString('base64') === wasmSourceB64, 'Compressed WASM matches source file (round-trip)');
 } else {
   console.log('  SKIP: WASM source not found for comparison');
 }
 
 // Verify DB base64 decodes to valid SQLite file
 try {
-  const dbBytes = Buffer.from(dbB64, 'base64');
+  const dbBytes = decode(dbB64);
   const magic = dbBytes.slice(0, 16).toString('utf8');
   ok(magic.startsWith('SQLite format 3'), 'Dataset base64 decodes to valid SQLite file');
 } catch (e) {
@@ -140,8 +142,9 @@ async function runSolutionTests() {
   const SQL = await initSqlJs({ wasmBinary: wasmBytes });
 
   // Load DB from base64
-  const dbBytes = Buffer.from(dbB64, 'base64');
+  const dbBytes = decode(dbB64);
   const db = new SQL.Database(dbBytes);
+  const executor = require('../query-engine.js').createExecutor(SQL, dbBytes);
 
   // Read solutions from module dir
   const solutionsPath = path.join(MODULE_DIR, 'solutions.sql');
@@ -174,9 +177,9 @@ async function runSolutionTests() {
     }
 
     try {
-      const results = db.exec(sqlBlock);
-      const rows = results.length > 0 ? results[0].values : [];
-      const hash = await GradingLogic.computeHash(rows, expectedCols);
+      const result = executor.execute(sqlBlock, { graded: true });
+      const rows = result.rows;
+      const hash = await GradingLogic.computeHash(rows, expectedCols, q.grading);
       ok(hash === expectedHash, `${qId} reference solution → PASS (hash match)`);
     } catch (e) {
       fail(`${qId} reference solution threw: ${e.message}`);
@@ -187,10 +190,10 @@ async function runSolutionTests() {
   console.log('\n[5] Wrong query → FAIL');
   try {
     const q = questionsFromHtml[0];
-    const wrongSql = "SELECT 'wrong_answer_xyz' AS dummy_col";
+    const wrongSql = 'SELECT ' + q.expectedColumns.map((column, index) => "'wrong_answer_xyz' AS column_" + index).join(', ');
     const results = db.exec(wrongSql);
     const rows = results.length > 0 ? results[0].values : [];
-    const hash = await GradingLogic.computeHash(rows, q.expectedColumns);
+    const hash = await GradingLogic.computeHash(rows, q.expectedColumns, q.grading);
     ok(hash !== hashesFromHtml[q.id], 'Deliberately wrong query → FAIL (hash mismatch, not false PASS)');
   } catch (e) {
     fail(`Wrong query test threw: ${e.message}`);
@@ -206,6 +209,7 @@ async function runSolutionTests() {
   }
 
   db.close();
+  executor.close();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Test 7: SQL schema JSON contains expected tables

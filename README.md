@@ -4,6 +4,16 @@ A self-contained SQL technical screening tool. Each assessment is a single
 standalone HTML file that runs entirely in the candidate's browser — no server,
 no internet connection, and no candidate data leaves their machine.
 
+The workspace supports focused/all-question views, searchable schema details,
+declared relationships, cancellable background SQL, and local autosave with
+downloadable checkpoints. Grades belong to the exact executed SQL; later edits
+are marked ungraded. Finish Work opens a review dialog with HTML and JSON exports.
+
+Binary assets are gzip-compressed inside the HTML and decoded locally. Use a
+current browser with WebAssembly, Web Workers and DecompressionStream support.
+Local-file storage varies by browser; the save indicator reports failures and
+downloadable checkpoints provide a portable fallback.
+
 ---
 
 ## Repository layout
@@ -76,15 +86,16 @@ The builder runs a multi-step pipeline:
 5. Executes all reference solutions and computes SHA-256 answer hashes
 6. Re-validates each solution against its stored hash (sanity gate)
 7. Derives a schema JSON summary for the candidate UI
-8. Serialises the SQLite database to base64
+8. Compresses and base64-encodes the database and WebAssembly engine
 9. Minifies the JS and CSS runtime files
 10. Assembles everything into a single HTML file
-11. Writes the HTML and a copy of the module README to `dist/`
-12. Runs the integration and feature test suites against the output
-13. Prints the output file size
+11. Writes staged HTML and a copy of the module README
+12. Runs engine, integration and feature tests against the staged output
+13. Checks the size budget, then publishes to `dist/`
 
-If any step fails the build stops, prints the reason, and no output file is
-written (or the partial file is deleted if tests fail post-write).
+If validation or tests fail, staged files are discarded and existing published
+files remain unchanged. Every build refreshes the editor bundle automatically.
+The default size budget is 5 MiB; use `--max-size-mb` to override it.
 
 ### Output files
 
@@ -142,6 +153,18 @@ sql-screening/
 
 ## Creating a new module
 
+For a working starting point, run from the repository root:
+
+```bash
+python sql-screening/builder/builder.py --scaffold sql-screening/modules/my-module
+python sql-screening/builder/builder.py --module sql-screening/modules/my-module --preview
+python sql-screening/builder/builder.py --module sql-screening/modules/my-module --validate-only
+```
+
+Scaffolding never overwrites an existing directory. Preview validates the module
+and prints up to five reference-result rows per question without creating HTML.
+Keep preview output with interviewer materials, not candidate materials.
+
 New modules are authored with the help of an LLM using the prompt in
 `sql-screening/template/MODULE_TEMPLATE.md`. The template conducts a structured
 interview (domain, role, question count, difficulty, data volume, SQL concepts)
@@ -166,8 +189,11 @@ Send the candidate only the `sql-screening/dist/<module-id>.html` file. They
 open it in any modern browser (Chrome, Firefox, Safari, Edge). No installation
 required. No internet connection required after the file is received.
 
-When they click **Finish Work**, a results HTML file downloads to their machine.
-They send that file to you, and you open it in a browser to review their answers.
+When they click **Finish Work**, candidates review their answers and choose
+**Download report** or **Download JSON**. The report includes a scorecard, exact
+execution evidence, recent query history, and editable reviewer notes for printing.
+Edited drafts do not inherit a previous passing grade. Reports and checkpoints
+contain candidate data; store and share them appropriately.
 
 Keep the `sql-screening/dist/<module-id>-README.md` for yourself — it contains
 the question guide and interviewer notes.
@@ -198,6 +224,25 @@ After rebuilding, re-run the builder for each module to pick up the new bundle.
 ---
 
 ## Running tests independently
+
+```bash
+python -B sql-screening/builder/test/test_hash_alignment.py
+python -B sql-screening/builder/test/test_builder.py
+npm --prefix sql-screening/runtime run test:engine
+node sql-screening/runtime/node_modules/playwright/cli.js install chromium
+npm --prefix sql-screening/runtime run test:browser
+```
+
+Builder tests use disposable fixture copies. Browser tests require a current built
+`ci-test` assessment and run offline. Pass `-- --module=<module-id>` to test another
+built module. Screenshots go to a temporary directory. The suite exercises real
+execution, exports, recovery, unavailable storage, and desktop/mobile layouts.
+
+Runtime limits: 8 seconds per query, 50,000 rows for grading, and 4 MB of result
+data. Playground results show up to 500 rows; table previews show up to 100 rows.
+Grading uses the complete result or reports an explicit limit error. Reports and
+checkpoints retain up to 500 result rows and 20 recent runs per editor. Result
+CSVs contain the displayed dataset, with sample files labelled as such.
 
 The test suites require a built HTML file to run against. They are normally
 invoked automatically by the builder, but you can run them manually:

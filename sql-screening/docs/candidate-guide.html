@@ -300,13 +300,13 @@
     <div class="step">
       <div class="step-num">3</div>
       <div class="step-body">
-        <strong>Do not close or refresh the tab</strong> during the assessment. Refreshing reloads the page and clears your in-progress work.
+        <strong>Check the save indicator.</strong> Work is saved locally when browser storage is available. After a refresh, choose Resume. Download a recovery checkpoint regularly, especially if browser saving is unavailable.
       </div>
     </div>
   </div>
 
   <div class="warning">
-    <strong>Important:</strong> Once you click "Finish Work" and confirm, your results download immediately. Make sure you are done before you click it.
+    <strong>Finish Work</strong> opens a review of your answers. Resolve any unrun edits, then choose Download report or Download JSON. Keep working returns you to the assessment.
   </div>
 
 
@@ -447,13 +447,14 @@
   <p>At the top of the right panel, all table names and their columns are listed. Click the <strong>▲</strong> button next to "Playground" to collapse or expand this panel.</p>
 
   <h3>Notes</h3>
-  <p>A free-text notes area sits below the schema reference. Use it to jot down intermediate calculations, working thoughts, or column relationships you notice. Your notes are included in the results report.</p>
+  <p>Use SQL comments in your editor to record assumptions or intermediate reasoning. They are retained with your SQL.</p>
 
   <h3>SQLite Function Reference</h3>
   <p>Click <strong>SQLite Reference</strong> in the right panel to expand a searchable reference of built-in SQLite functions: aggregate, string, numeric, date/time, conditional, window, and type conversion. Search by function name or description.</p>
 
   <h3>Query History</h3>
-  <p>All successful playground queries are saved automatically. Click <strong>Query History</strong> to expand the list. Click the <strong>▶</strong> play button next to any past query to load it back into the playground editor and re-run it.</p>
+  <p>Each editor retains its 20 most recent runs, including errors. Expand <strong>Query history</strong> and use Restore to load an earlier query without executing it. Run it when ready.</p>
+  <p>Use <strong>Focus</strong> for one question at a time, or <strong>All questions</strong> to scan the assessment. The database icon toggles the data panel. Search table and column names, inspect types and declared relationships, or preview data without replacing your answer. The square Stop button cancels a running query.</p>
 
 
   <!-- ──────────────────────────────────────────────────────── -->
@@ -463,9 +464,10 @@
 
   <h3>What the grader checks</h3>
   <ul>
-    <li><strong>Values only</strong> — column names in your output do not need to match exactly; only the values in the positions specified by "Expected columns" matter.</li>
-    <li><strong>Row order is ignored</strong> — your rows can come back in any order and still pass.</li>
+    <li><strong>Columns and values</strong> — return exactly the expected number of columns in the stated order. Alias names are optional unless the question requires them.</li>
+    <li><strong>Comparison rules</strong> — row order and text case are ignored by default. Follow any explicit ordering, case or rounding requirements in the question.</li>
     <li><strong>NULL handling</strong> — NULLs are treated as a distinct value and must appear where expected.</li>
+    <li><strong>Edits after a run</strong> — changing SQL marks the current draft ungraded. Rerun it, or use the last executed SQL from the finish review.</li>
   </ul>
 
   <div class="tip">
@@ -477,6 +479,7 @@
   <h2 id="shortcuts">7 · Keyboard shortcuts</h2>
 
   <p>These shortcuts work in all SQL editors (graded question editors and playground):</p>
+  <p><kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> runs the full editor. <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> runs selected SQL. A selected query is recorded separately from any unrun text remaining in the editor.</p>
 
   <table>
     <thead>
@@ -539,7 +542,7 @@
     </tbody>
   </table>
 
-  <p>If you run a blocked statement you will see a <span class="badge badge-np">NOT PERMITTED</span> badge. The database is unaffected. Simply change your approach to use a SELECT query instead.</p>
+  <p>Blocked statements display an error and changes from that execution are rolled back. Queries have an 8-second limit. Playground results show up to 500 rows and table previews up to 100. Grading uses the complete result, with explicit errors above 50,000 rows or 4 MB; it never grades a truncated sample.</p>
 
   <div class="tip">
     <strong>Need a temporary working table?</strong> Use <code>CREATE TEMP TABLE my_cte AS SELECT …</code> — this is explicitly allowed. CTEs (<code>WITH … AS (SELECT …)</code>) inside a SELECT are also fully supported and often cleaner.
@@ -558,13 +561,13 @@
   <div class="step">
     <div class="step-num">2</div>
     <div class="step-body">
-      A confirmation dialog will appear. Read it carefully. Click OK only when you are sure you are done — you cannot undo this.
+      Review the question statuses. Use the links to revisit unfinished work. For edited answers, rerun the draft or select Use last executed SQL.
     </div>
   </div>
   <div class="step">
     <div class="step-num">3</div>
     <div class="step-body">
-      <strong>A results file will download automatically</strong> to your browser's default download folder. The file is named something like <code>Module_Name_results.html</code>. This file contains your complete results: score, all SQL you wrote, your notes, and your playground queries.
+      Choose <strong>Download report</strong> for the readable HTML report or <strong>Download JSON</strong> for structured results. Files include your name and module identifier. Reports contain your drafts, execution evidence, recent query history and labelled result samples.
     </div>
   </div>
   <div class="step">
@@ -575,7 +578,7 @@
   </div>
 
   <div class="warning">
-    <strong>Browser pop-up blocker:</strong> On some browsers, a print/preview window may also open in a separate tab. If your browser blocked it, your results file was still downloaded — the download always completes regardless of your pop-up settings.
+    <strong>Check your Downloads folder:</strong> The tool requests a download without opening a print window. Browser settings may require you to approve it. Checkpoints are recovery files, not final reports.
   </div>
 
 
@@ -585,11 +588,11 @@
   <ul>
     <li><strong>Read each question fully</strong> before writing SQL, paying attention to the Expected columns list — it tells you exactly what shape your output should be.</li>
     <li><strong>Use the playground first</strong> to explore the tables and get a feel for the data before writing your graded answers.</li>
-    <li><strong>Write notes as you go</strong> — the notes area is included in your report, so you can show your thinking even if an answer does not quite work.</li>
+    <li><strong>Record your assumptions</strong> in SQL comments so the interviewer can follow your reasoning.</li>
     <li><strong>Re-run freely</strong> — there is no penalty for running a query multiple times. Iterate until you are satisfied.</li>
     <li><strong>Use the SQLite function reference</strong> if you forget the exact syntax for a function — it is built in to the right panel.</li>
     <li><strong>Column order matters for grading</strong> — make sure the columns in your SELECT match the order shown in "Expected columns".</li>
-    <li><strong>Do not worry about row order</strong> — the grader sorts results before comparing, so you do not need an ORDER BY to pass.</li>
+    <li><strong>Follow the question's comparison rules</strong> for ordering and precision; row order is ignored by default.</li>
   </ul>
 
 </div>

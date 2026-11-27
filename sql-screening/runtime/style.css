@@ -5,10 +5,10 @@
 
 /* ── Light mode (default) ── */
 :root {
-  --color-bg:           #f0ede8;
-  --color-panel:        #e8e5e0;
-  --color-sidebar:      #dedad5;
-  --color-border:       #c5c1bb;
+  --color-bg:           #f5f6f7;
+  --color-panel:        #ffffff;
+  --color-sidebar:      #edf0f1;
+  --color-border:       #cbd1d4;
   --color-text:         #1a1a1a;
   --color-text-muted:   #5e5e5e;
   --color-accent:       #1a5fba;
@@ -38,9 +38,9 @@
   --color-scrollbar-thumb:    #b0aba5;
   --color-scrollbar-hover:    #a09b95;
 
-  --sidebar-width:      240px;
+  --sidebar-width:      170px;
   --sidebar-collapsed:  48px;
-  --right-panel-width:  320px;
+  --right-panel-width:  370px;
   --schema-panel-height: 220px;
   --transition-speed:   0.2s;
 

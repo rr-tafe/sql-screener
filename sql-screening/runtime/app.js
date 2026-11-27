@@ -5,14 +5,6 @@
   // SQL Guard — classify before ANY query reaches the engine
   // Rule 2 (TEMP TABLE) checked before any general CREATE check.
   // ============================================================
-  function classify(sqlStr) {
-    var s = sqlStr.trim().replace(/\s+/g, ' ');
-    if (/^SELECT\b/i.test(s)) return 'ALLOWED';
-    if (/^WITH\s+(RECURSIVE\s+)?\w/i.test(s)) return 'ALLOWED';
-    if (/CREATE\s+(TEMP|TEMPORARY)\s+TABLE/i.test(s)) return 'ALLOWED';
-    return 'BLOCKED';
-  }
-
   // ============================================================
   // Base64 → Uint8Array helper (works for large strings)
   // ============================================================
@@ -39,6 +31,22 @@
   var editors = {};                 // { exploration, playground, q1, q2, ... }
   var schema = null;                // SQL_SCHEMA_JSON
   var tablePreviewState = {};       // { [tableName]: { loaded, rows, columns, rowCount } }
+  var executions = {};
+  var attempts = {};
+  var temporarySetup = [];
+  var worker = null;
+  var workerBytes;
+  var workerRequest = null;
+  var requestId = 0;
+  var busy = false;
+  var restoring = false;
+  var saveTimer;
+  var activeQuestion = 0;
+  var allQuestions = false;
+  var assessmentQuestions = [];
+  var storageKey;
+  var savedSession;
+  var finishedAt = null;
 
   // ============================================================
   // DOM ready
@@ -55,6 +63,13 @@
     var moduleDesc     = typeof MODULE_DESCRIPTION   !== 'undefined' ? MODULE_DESCRIPTION   : '';
     var wasmB64        = typeof SQL_JS_WASM_B64      !== 'undefined' ? SQL_JS_WASM_B64      : '';
     var dbB64          = typeof DATASET_DB_B64       !== 'undefined' ? DATASET_DB_B64       : '';
+    assessmentQuestions = questions;
+    document.title = moduleTitle + ' - SQL Assessment';
+    storageKey = 'sql-assessment:' + BUILD_ID;
+    try {
+      savedSession = JSON.parse(localStorage.getItem(storageKey) || 'null');
+      if (savedSession) validateSession(savedSession);
+    } catch (error) { savedSession = null; }
 
     // Initialize question statuses
     questions.forEach(function (q) {
@@ -83,7 +98,28 @@
 
     updateBeginBtn();
 
+    var resumeButton = document.getElementById('resume-btn');
+    resumeButton.hidden = !savedSession;
+    if (savedSession) resumeButton.textContent = 'Resume ' + savedSession.candidateName;
+    resumeButton.addEventListener('click', function () {
+      candidateName = savedSession.candidateName;
+      startTest(questions, answerHashes, moduleTitle, moduleVersion, wasmB64, dbB64, moduleDesc, savedSession);
+    });
+    document.getElementById('restore-file').addEventListener('change', async function (event) {
+      try {
+        var file = event.target.files[0];
+        if (!file) return;
+        if (file.size > 10000000) throw new Error('Checkpoint exceeds 10 MB.');
+        var session = JSON.parse(await file.text());
+        validateSession(session);
+        candidateName = session.candidateName;
+        startTest(questions, answerHashes, moduleTitle, moduleVersion, wasmB64, dbB64, moduleDesc, session);
+      } catch (error) { document.getElementById('start-error').textContent = error.message; }
+      event.target.value = '';
+    });
+
     beginBtn.addEventListener('click', function () {
+      if (savedSession && !window.confirm('Start over and replace the saved session for this assessment?')) return;
       candidateName = nameInput.value.trim();
       startTest(questions, answerHashes, moduleTitle, moduleVersion, wasmB64, dbB64, moduleDesc);
     });
@@ -92,7 +128,7 @@
   // ============================================================
   // startTest — hide Screen 1, show Screen 2, init everything
   // ============================================================
-  function startTest(questions, answerHashes, moduleTitle, moduleVersion, wasmB64, dbB64, moduleDesc) {
+  function startTest(questions, answerHashes, moduleTitle, moduleVersion, wasmB64, dbB64, moduleDesc, recovery) {
     document.getElementById('screen1').classList.add('hidden');
     document.getElementById('screen2').classList.remove('hidden');
 
@@ -100,17 +136,24 @@
     var nameDisplay = document.getElementById('sidebar-candidate-name');
     if (nameDisplay) nameDisplay.textContent = candidateName;
 
-    startTime = new Date();
+    startTime = recovery ? new Date(recovery.startedAt) : new Date();
+    temporarySetup = recovery ? recovery.temporarySetup : [];
+    finishedAt = null;
     startTimer();
+    document.getElementById('save-status').textContent = 'Opening database...';
 
     // Async DB init then wire up UI
     initDatabase(wasmB64, dbB64).then(function (database) {
       db = database;
       buildUI(questions, answerHashes, moduleTitle, moduleVersion, moduleDesc);
+      if (recovery) restoreSession(recovery);
+      saveSession();
     }).catch(function (err) {
       console.error('Failed to initialize sql.js database:', err);
-      // Still build UI — queries will error gracefully
-      buildUI(questions, answerHashes, moduleTitle, moduleVersion, moduleDesc);
+      clearInterval(timerInterval);
+      document.getElementById('screen1').classList.remove('hidden');
+      document.getElementById('screen2').classList.add('hidden');
+      document.getElementById('start-error').textContent = 'Unable to open assessment: ' + err.message;
     });
   }
 
@@ -118,6 +161,7 @@
   // Timer
   // ============================================================
   function startTimer() {
+    clearInterval(timerInterval);
     var display = document.getElementById('timer-display');
     timerInterval = setInterval(function () {
       var elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
@@ -133,7 +177,7 @@
 
   function getElapsedString() {
     if (!startTime) return '00:00:00';
-    var elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
+    var elapsed = Math.floor(((finishedAt || Date.now()) - startTime.getTime()) / 1000);
     var h = Math.floor(elapsed / 3600);
     var m = Math.floor((elapsed % 3600) / 60);
     var s = elapsed % 60;
@@ -143,12 +187,64 @@
   // ============================================================
   // sql.js initialization
   // ============================================================
-  function initDatabase(wasmB64, dbB64) {
-    var wasmBinary = base64ToUint8Array(wasmB64);
-    return CMEditor.initSqlJs({ wasmBinary: wasmBinary }).then(function (SQL) {
-      var dbBytes = base64ToUint8Array(dbB64);
-      return new SQL.Database(dbBytes);
+  async function initDatabase(wasmB64, dbB64) {
+    async function decode(source) {
+      var bytes = base64ToUint8Array(source);
+      if (typeof PAYLOAD_ENCODING !== 'undefined' && PAYLOAD_ENCODING === 'gzip') {
+        if (typeof DecompressionStream === 'undefined') throw new Error('This browser needs an update to open compressed assessments.');
+        return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+      }
+      return bytes;
+    }
+    workerBytes = { wasm: await decode(wasmB64), database: await decode(dbB64) };
+    await restartWorker();
+    return true;
+  }
+
+  async function restartWorker() {
+    if (worker) worker.terminate();
+    var url = URL.createObjectURL(new Blob([WORKER_SOURCE], { type: 'text/javascript' }));
+    worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    worker.onmessage = function (event) {
+      if (!workerRequest || event.data.id !== workerRequest.id) return;
+      var pending = workerRequest;
+      workerRequest = null;
+      clearTimeout(pending.timeout);
+      if (event.data.error) pending.reject(new Error(event.data.error));
+      else pending.resolve(event.data.result);
+    };
+    worker.onerror = function () {
+      if (!workerRequest) return;
+      var pending = workerRequest;
+      workerRequest = null;
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Database worker stopped. Reload and resume your saved session.'));
+    };
+    await workerCall({ type: 'init', wasm: workerBytes.wasm, database: workerBytes.database, setup: temporarySetup }, 15000);
+  }
+
+  function workerCall(message, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      if (workerRequest) { reject(new Error('Another query is running.')); return; }
+      message.id = ++requestId;
+      workerRequest = { id: message.id, resolve: resolve, reject: reject, timeout: setTimeout(function () {
+        var pending = workerRequest;
+        workerRequest = null;
+        worker.terminate();
+        pending.reject(new Error('Execution timed out. Narrow the query and run again.'));
+      }, timeoutMs || 8000) };
+      worker.postMessage(message);
     });
+  }
+
+  function cancelQuery() {
+    if (!workerRequest || !busy) return;
+    var pending = workerRequest;
+    workerRequest = null;
+    clearTimeout(pending.timeout);
+    worker.terminate();
+    pending.reject(new Error('Query cancelled. Your SQL is unchanged.'));
   }
 
   // ============================================================
@@ -168,6 +264,21 @@
     wireFnRefPopup();
     wireQueryHistory();
     wireThemeToggle();
+    wireWorkspace(questions);
+    document.getElementById('cancel-query').addEventListener('click', cancelQuery);
+    document.getElementById('checkpoint-btn').addEventListener('click', function () { downloadJSON(sessionData(), 'checkpoint'); });
+    document.getElementById('clear-saved-btn').addEventListener('click', function () {
+      if (!window.confirm('Clear saved progress and return to the start? Download a checkpoint first to keep your work.')) return;
+      clearTimeout(saveTimer);
+      restoring = true;
+      try { localStorage.removeItem(storageKey); } catch (error) {}
+      window.location.reload();
+    });
+    window.addEventListener('pagehide', saveSession);
+    window.addEventListener('beforeunload', function (event) {
+      saveSession();
+      if (!finishedAt) { event.preventDefault(); event.returnValue = ''; }
+    });
   }
 
   // ============================================================
@@ -189,7 +300,7 @@
 
       var label = document.createElement('span');
       label.className = 'nav-label';
-      label.textContent = 'Q' + (idx + 1);
+      label.textContent = 'Q' + (idx + 1) + (q.title ? ': ' + q.title : '');
 
       a.appendChild(dot);
       a.appendChild(label);
@@ -197,6 +308,8 @@
 
       a.addEventListener('click', function (e) {
         e.preventDefault();
+        activeQuestion = idx;
+        updateWorkspace();
         var target = document.getElementById('section-' + q.id);
         if (target) {
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -212,7 +325,12 @@
     var finishBtn = document.createElement('button');
     finishBtn.id = 'finish-work-btn';
     finishBtn.className = 'btn-finish-work';
-    finishBtn.textContent = 'Finish Work';
+    finishBtn.setAttribute('aria-label', 'Finish Work');
+    finishBtn.title = 'Finish Work';
+    finishBtn.appendChild(CMEditor.icon('Download'));
+    var finishLabel = document.createElement('span');
+    finishLabel.textContent = 'Finish Work';
+    finishBtn.appendChild(finishLabel);
 
     bottomDiv.appendChild(finishBtn);
     sidebarContent.appendChild(bottomDiv);
@@ -234,7 +352,7 @@
 
       var numSpan = document.createElement('span');
       numSpan.className = 'question-number';
-      numSpan.textContent = 'Question ' + (idx + 1);
+      numSpan.textContent = 'Question ' + (idx + 1) + (q.title ? ': ' + q.title : '');
       meta.appendChild(numSpan);
 
       if (q.difficulty) {
@@ -280,6 +398,19 @@
 
       editorButtons.appendChild(runBtn);
       editorButtons.appendChild(fmtBtn);
+      var selectionBtn = document.createElement('button');
+      selectionBtn.className = 'btn-selection';
+      selectionBtn.dataset.context = q.id;
+      selectionBtn.textContent = 'Run selection';
+      selectionBtn.disabled = true;
+      selectionBtn.title = 'Run selected SQL (Ctrl/Cmd+Shift+Enter)';
+      editorButtons.appendChild(selectionBtn);
+      editorButtons.appendChild(iconButton('Maximize', 'Expand SQL editor', function () {
+        var expanded = section.classList.toggle('editor-expanded');
+        this.setAttribute('aria-label', expanded ? 'Restore editor size' : 'Expand SQL editor');
+        this.title = this.getAttribute('aria-label');
+        this.replaceChildren(CMEditor.icon(expanded ? 'Minimize' : 'Maximize'));
+      }));
 
       var statusArea = document.createElement('div');
       statusArea.id = 'status-' + q.id;
@@ -297,9 +428,20 @@
       editorBlock.appendChild(resultsArea);
 
       section.appendChild(meta);
-      section.appendChild(prompt);
-      section.appendChild(colsDiv);
+      var brief = document.createElement('details');
+      brief.className = 'question-brief';
+      brief.open = true;
+      var briefLabel = document.createElement('summary');
+      briefLabel.textContent = 'Question brief';
+      brief.appendChild(briefLabel);
+      brief.appendChild(prompt);
+      brief.appendChild(colsDiv);
+      section.appendChild(brief);
       section.appendChild(editorBlock);
+      var history = document.createElement('details');
+      history.className = 'question-history';
+      history.innerHTML = '<summary>Query history</summary><div id="history-' + q.id + '"></div>';
+      section.appendChild(history);
 
       container.appendChild(section);
     });
@@ -314,6 +456,10 @@
       var container = document.getElementById('editor-' + q.id);
       editors[q.id] = CMEditor.createEditor(container, {
         schema: schema,
+        onChange: function () { editorChanged(q.id); },
+        onRun: function () { runGraded(q, ANSWER_HASHES_JSON); },
+        onRunSelection: function () { runGraded(q, ANSWER_HASHES_JSON, true); },
+        onSelection: function (selected) { document.querySelector('.btn-selection[data-context="' + q.id + '"]').disabled = !selected || busy; },
       });
     });
 
@@ -321,6 +467,10 @@
     var playgroundContainer = document.getElementById('playground-editor');
     editors['playground'] = CMEditor.createEditor(playgroundContainer, {
       schema: schema,
+      onChange: function () { editorChanged('playground'); },
+      onRun: runPlayground,
+      onRunSelection: function () { runPlayground(true); },
+      onSelection: function (selected) { document.getElementById('playground-selection').disabled = !selected || busy; },
     });
   }
 
@@ -342,6 +492,7 @@
 
     // Question Run / Format
     questions.forEach(function (q) {
+      document.querySelector('.btn-selection[data-context="' + q.id + '"]').addEventListener('click', function () { runGraded(q, answerHashes, true); });
       document.querySelector('.btn-run[data-context="' + q.id + '"]')
         .addEventListener('click', function () {
           runGraded(q, answerHashes);
@@ -358,39 +509,34 @@
   // Execute SQL against the db
   // Returns { rows, columns } or throws.
   // ============================================================
-  function execSQL(sqlStr) {
+  async function execSQL(sqlStr, options) {
     if (!db) {
       throw new Error('Database not yet initialized.');
     }
-    var results = db.exec(sqlStr);
-    if (!results || results.length === 0) {
-      return { columns: [], rows: [] };
-    }
-    var first = results[0];
-    return { columns: first.columns, rows: first.values };
+    var result = await workerCall({ type: 'execute', sql: sqlStr, options: options || {} });
+    temporarySetup = temporarySetup.concat(result.setup || []);
+    return result;
   }
 
   // ============================================================
   // Playground runner
   // ============================================================
-  function runPlayground() {
-    var sqlStr    = editors['playground'].getContent().trim();
+  async function runPlayground(selection) {
+    if (busy) return;
+    var sqlStr    = (selection === true ? editors.playground.getSelection() : editors.playground.getContent()).trim();
     var statusEl  = document.getElementById('playground-status');
     var resultsEl = document.getElementById('playground-results');
 
     if (!sqlStr) return;
 
-    var cls = classify(sqlStr);
-    if (cls === 'BLOCKED') {
-      clearResults(resultsEl);
-      showBadge(statusEl, 'not-permitted', 'NOT PERMITTED');
-      return;  // Do NOT add to history
-    }
-
     clearStatus(statusEl);
+    setBusy(true);
+    showBadge(statusEl, 'not-permitted', 'Running...');
+    var record = { sql: sqlStr, at: new Date().toISOString(), status: 'executed' };
     try {
-      var result = execSQL(sqlStr);
-      renderResultsTable(resultsEl, result.rows, result.columns);
+      var result = await execSQL(sqlStr);
+      renderResultsTable(resultsEl, result.rows, result.columns, { truncated: result.truncated });
+      showBadge(statusEl, 'pass', 'Executed in ' + result.durationMs + ' ms');
       if (queryHistory.indexOf(sqlStr) === -1) {
         queryHistory.push(sqlStr);
       }
@@ -400,70 +546,311 @@
       }
       updateQueryHistory();
     } catch (err) {
+      record.status = 'error';
+      record.message = err.message;
       clearResults(resultsEl);
       showBadge(statusEl, 'error', 'ERROR: ' + err.message);
       // Add to general history but NOT to success history
       if (queryHistory.indexOf(sqlStr) === -1) {
         queryHistory.push(sqlStr);
       }
+      await recoverWorker(err);
+    } finally {
+      addAttempt('playground', record);
+      updateQueryHistory();
+      setBusy(false);
+      saveSession();
     }
   }
 
   // ============================================================
   // Graded question runner
   // ============================================================
-  function runGraded(q, answerHashes) {
-    var sqlStr    = editors[q.id].getContent().trim();
+  async function runGraded(q, answerHashes, selection) {
+    if (busy) return;
+    var sqlStr    = (selection ? editors[q.id].getSelection() : editors[q.id].getContent()).trim();
     var statusEl  = document.getElementById('status-' + q.id);
     var resultsEl = document.getElementById('results-' + q.id);
 
     if (!sqlStr) return;
 
-    var cls = classify(sqlStr);
-    if (cls === 'BLOCKED') {
-      clearResults(resultsEl);
-      showBadge(statusEl, 'not-permitted', 'NOT PERMITTED');
-      updateNavDot(q.id, 'not-permitted');
-      questionStatuses[q.id] = 'not-permitted';
-      return;
-    }
-
     clearStatus(statusEl);
-    var result;
+    setBusy(true);
+    showBadge(statusEl, 'not-permitted', 'Running...');
+    var record = { sql: sqlStr, at: new Date().toISOString(), status: 'error', rows: [], columns: [] };
     try {
-      result = execSQL(sqlStr);
+      var result = await execSQL(sqlStr, { graded: true });
+      record.rows = result.rows.slice(0, 500);
+      record.columns = result.columns;
+      record.rowCount = result.rows.length;
+      record.truncated = result.rows.length > 500;
+      record.durationMs = result.durationMs;
+      var validColumns = result.columns.length === q.expectedColumns.length;
+      if (q.grading && q.grading.requireColumnNames) validColumns = validColumns && result.columns.every(function (column, index) { return column === q.expectedColumns[index]; });
+      var hash = validColumns ? await GradingLogic.computeHash(result.rows, q.expectedColumns, q.grading) : null;
+      record.status = hash === answerHashes[q.id] ? 'pass' : 'fail';
+      record.message = validColumns ? (record.status === 'pass' ? 'Passed' : 'Executed; answer differs') : 'Executed; expected columns: ' + q.expectedColumns.join(', ');
+      renderResultsTable(resultsEl, record.rows, record.columns, { truncated: record.truncated, rowCount: record.rowCount });
     } catch (err) {
+      record.message = err.message;
       clearResults(resultsEl);
-      showBadge(statusEl, 'error', 'ERROR: ' + err.message);
-      updateNavDot(q.id, 'error');
-      questionStatuses[q.id] = 'error';
-      return;
+      editors[q.id].focusError(err.message);
+      await recoverWorker(err);
+    } finally {
+      executions[q.id] = record;
+      addAttempt(q.id, record);
+      refreshQuestion(q.id);
+      setBusy(false);
+      saveSession();
     }
+  }
 
-    renderResultsTable(resultsEl, result.rows, result.columns);
+  function iconButton(icon, label, action) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.appendChild(CMEditor.icon(icon));
+    button.addEventListener('click', action);
+    return button;
+  }
 
-    // Grade via GradingLogic
-    GradingLogic.computeHash(result.rows, q.expectedColumns).then(function (hash) {
-      var expected = answerHashes[q.id];
-      if (hash === expected) {
-        showBadge(statusEl, 'pass', 'PASS');
-        updateNavDot(q.id, 'pass');
-        questionStatuses[q.id] = 'pass';
-      } else {
-        showBadge(statusEl, 'fail', 'FAIL');
-        updateNavDot(q.id, 'fail');
-        questionStatuses[q.id] = 'fail';
-      }
-    }).catch(function (err) {
-      showBadge(statusEl, 'error', 'ERROR: ' + err.message);
-      updateNavDot(q.id, 'error');
-      questionStatuses[q.id] = 'error';
+  function setBusy(value) {
+    busy = value;
+    document.querySelectorAll('.btn-run, .btn-selection, #finish-work-btn').forEach(function (button) { button.disabled = value; });
+    document.querySelectorAll('.btn-selection').forEach(function (button) { button.disabled = value || !editors[button.dataset.context].getSelection(); });
+    document.getElementById('playground-selection').disabled = value || !editors.playground.getSelection();
+    document.getElementById('cancel-query').disabled = !value;
+    document.getElementById('screen2').setAttribute('aria-busy', String(value));
+  }
+
+  async function recoverWorker(error) {
+    if (!/cancelled|timed out|worker stopped/i.test(error.message)) return;
+    try { await restartWorker(); }
+    catch (restartError) {
+      db = null;
+      document.getElementById('save-status').textContent = 'Database unavailable. Download a checkpoint, then reload.';
+    }
+  }
+
+  function editorChanged(questionId) {
+    if (restoring) return;
+    if (finishedAt) { finishedAt = null; startTimer(); }
+    if (questionId !== 'playground') refreshQuestion(questionId);
+    clearTimeout(saveTimer);
+    document.getElementById('save-status').textContent = 'Unsaved changes';
+    saveTimer = setTimeout(saveSession, 500);
+  }
+
+  function refreshQuestion(questionId) {
+    var record = executions[questionId];
+    var sql = editors[questionId].getContent().trim();
+    var status = record ? (record.sql === sql ? record.status : 'changed') : (sql ? 'draft' : null);
+    questionStatuses[questionId] = status;
+    var statusElement = document.getElementById('status-' + questionId);
+    if (status === 'changed') showBadge(statusElement, 'not-permitted', 'Edited since last run - ungraded');
+    else if (record) showBadge(statusElement, record.status, record.message || record.status);
+    else if (status === 'draft') showBadge(statusElement, 'not-permitted', 'Not run');
+    else clearStatus(statusElement);
+    updateNavDot(questionId, status);
+    var link = document.querySelector('.nav-link[data-section="' + questionId + '"]');
+    if (link) {
+      link.title = questionId.toUpperCase() + ': ' + (status || 'not attempted');
+      link.setAttribute('aria-label', link.title);
+      var badge = link.querySelector('.nav-status');
+      if (!badge) { badge = document.createElement('small'); badge.className = 'nav-status'; link.appendChild(badge); }
+      badge.textContent = status || 'not attempted';
+    }
+  }
+
+  function addAttempt(questionId, record) {
+    var history = attempts[questionId] || [];
+    history.unshift({ sql: record.sql, status: record.status, at: record.at, message: record.message || '', durationMs: record.durationMs || 0 });
+    attempts[questionId] = history.slice(0, 20);
+    renderAttemptHistory(questionId);
+  }
+
+  function renderAttemptHistory(questionId) {
+    var container = document.getElementById(questionId === 'playground' ? 'query-history-body' : 'history-' + questionId);
+    if (!container) return;
+    container.replaceChildren();
+    (attempts[questionId] || []).forEach(function (attempt) {
+      var item = document.createElement('div');
+      item.className = 'attempt-row';
+      var sql = document.createElement('code');
+      sql.textContent = attempt.sql;
+      var label = document.createElement('span');
+      label.textContent = attempt.status + ' - ' + new Date(attempt.at).toLocaleTimeString();
+      item.appendChild(label);
+      item.appendChild(sql);
+      item.appendChild(iconButton('History', 'Restore this query', function () { editors[questionId].setContent(attempt.sql); editors[questionId].view.focus(); }));
+      container.appendChild(item);
+    });
+    if (!container.children.length) container.textContent = 'No runs yet.';
+  }
+
+  function sessionData() {
+    var drafts = {};
+    Object.keys(editors).forEach(function (key) { drafts[key] = editors[key].getContent(); });
+    return { formatVersion: 1, buildId: BUILD_ID, moduleId: MODULE_ID, moduleVersion: MODULE_VERSION,
+      candidateName: candidateName, startedAt: startTime.toISOString(), savedAt: new Date().toISOString(),
+      drafts: drafts, executions: executions, attempts: attempts, temporarySetup: temporarySetup,
+      activeQuestion: activeQuestion, allQuestions: allQuestions, dark: document.documentElement.dataset.theme === 'dark' };
+  }
+
+  function saveSession() {
+    if (restoring || !startTime || !editors.playground) return;
+    clearTimeout(saveTimer);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(sessionData()));
+      document.getElementById('save-status').textContent = 'Saved on this browser';
+    } catch (error) {
+      document.getElementById('save-status').textContent = 'Browser save unavailable - download a checkpoint';
+    }
+  }
+
+  function validateSession(session) {
+    if (!session || session.formatVersion !== 1 || session.buildId !== BUILD_ID || session.moduleId !== MODULE_ID || session.moduleVersion !== MODULE_VERSION) throw new Error('This checkpoint belongs to a different assessment build.');
+    if (typeof session.candidateName !== 'string' || !session.candidateName.trim() || !Number.isFinite(Date.parse(session.startedAt))) throw new Error('Invalid checkpoint identity or start time.');
+    var ids = assessmentQuestions.map(function (question) { return question.id; }).concat('playground');
+    if (!session.drafts || !session.executions || !session.attempts || !Array.isArray(session.temporarySetup)) throw new Error('Incomplete checkpoint.');
+    if (session.temporarySetup.some(function (sql) { return typeof sql !== 'string' || sql.length > 100000; })) throw new Error('Invalid temporary-table setup.');
+    Object.keys(session.drafts).forEach(function (key) {
+      if (!ids.includes(key) || typeof session.drafts[key] !== 'string' || session.drafts[key].length > 100000) throw new Error('Invalid checkpoint draft.');
+    });
+    Object.keys(session.executions).forEach(function (key) {
+      var record = session.executions[key];
+      if (!ids.includes(key) || !record || typeof record.sql !== 'string' || !['pass', 'fail', 'error'].includes(record.status) || !Array.isArray(record.rows) || !Array.isArray(record.columns) || record.rows.length > 500 || record.rows.some(function (row) { return !Array.isArray(row); })) throw new Error('Invalid checkpoint execution.');
+    });
+    Object.keys(session.attempts).forEach(function (key) {
+      if (!ids.includes(key) || !Array.isArray(session.attempts[key]) || session.attempts[key].length > 20 || session.attempts[key].some(function (record) { return !record || typeof record.sql !== 'string'; })) throw new Error('Invalid checkpoint history.');
     });
   }
 
-  // ============================================================
-  // Right panel schema section — table + column reference
-  // ============================================================
+  function restoreSession(session) {
+    restoring = true;
+    Object.keys(session.drafts).forEach(function (key) { editors[key].setContent(session.drafts[key]); });
+    executions = session.executions;
+    attempts = session.attempts;
+    activeQuestion = Math.max(0, Math.min(assessmentQuestions.length - 1, Number(session.activeQuestion) || 0));
+    allQuestions = !!session.allQuestions;
+    Object.keys(executions).forEach(function (key) {
+      var record = executions[key];
+      renderResultsTable(document.getElementById('results-' + key), record.rows, record.columns, { truncated: record.truncated, rowCount: record.rowCount });
+    });
+    assessmentQuestions.forEach(function (question) { refreshQuestion(question.id); renderAttemptHistory(question.id); });
+    renderAttemptHistory('playground');
+    if (session.dark) document.getElementById('theme-toggle-btn').click();
+    updateWorkspace();
+    restoring = false;
+  }
+
+  function downloadJSON(data, suffix) {
+    downloadFile(JSON.stringify(data, null, 2), 'application/json', suffix + '.json');
+  }
+
+  function downloadFile(content, type, suffix) {
+    var url = URL.createObjectURL(new Blob([content], { type: type }));
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = (MODULE_ID + '_' + candidateName).replace(/[^a-z0-9_-]/gi, '_') + '_' + suffix;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  function wireWorkspace(questions) {
+    document.querySelectorAll('[data-icon]').forEach(function (button) { button.appendChild(CMEditor.icon(button.dataset.icon)); });
+    document.querySelectorAll('.btn-run, .btn-format').forEach(function (button) {
+      button.prepend(CMEditor.icon(button.classList.contains('btn-run') ? 'Play' : 'Code'));
+      if (button.classList.contains('btn-run')) button.title = 'Run query (Ctrl/Cmd+Enter)';
+    });
+    document.getElementById('previous-question').onclick = function () { activeQuestion--; updateWorkspace(); saveSession(); };
+    document.getElementById('next-question').onclick = function () { activeQuestion++; updateWorkspace(); saveSession(); };
+    document.getElementById('focus-view').onclick = function () { allQuestions = false; updateWorkspace(); saveSession(); };
+    document.getElementById('all-view').onclick = function () { allQuestions = true; updateWorkspace(); saveSession(); };
+    document.getElementById('data-panel-toggle').onclick = function () {
+      var screen = document.getElementById('screen2');
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        var open = screen.classList.toggle('data-open');
+        this.setAttribute('aria-expanded', String(open));
+      } else {
+        var hidden = screen.classList.toggle('data-hidden');
+        this.setAttribute('aria-expanded', String(!hidden));
+      }
+    };
+    function updateDataVisibility() {
+      var screen = document.getElementById('screen2');
+      var visible = window.matchMedia('(max-width: 900px)').matches ? screen.classList.contains('data-open') : !screen.classList.contains('data-hidden');
+      document.getElementById('data-panel-toggle').setAttribute('aria-expanded', String(visible));
+      screen.style.setProperty('--mobile-toolbar-height', document.querySelector('.workspace-toolbar').offsetHeight + 'px');
+    }
+    new ResizeObserver(updateDataVisibility).observe(document.querySelector('.workspace-toolbar'));
+    updateDataVisibility();
+    document.getElementById('playground-selection').onclick = function () { runPlayground(true); };
+    document.getElementById('schema-search').oninput = function () {
+      var query = this.value.toLowerCase();
+      document.querySelectorAll('.schema-table-panel').forEach(function (panel) { panel.hidden = !panel.textContent.toLowerCase().includes(query); });
+    };
+    document.getElementById('finish-back').onclick = function () { document.getElementById('finish-dialog').close(); };
+    document.getElementById('finish-download').onclick = function () { completeSession(); exportResults(questions, MODULE_TITLE, MODULE_VERSION); };
+    document.getElementById('finish-json').onclick = function () {
+      completeSession();
+      var data = sessionData();
+      data.completedAt = new Date(finishedAt).toISOString();
+      data.questionStatuses = Object.assign({}, questionStatuses);
+      data.questions = questions.map(function (question) { return { id: question.id, prompt: question.prompt, difficulty: question.difficulty, tags: question.tags || [] }; });
+      downloadJSON(data, 'results');
+    };
+    questions.forEach(function (question) { refreshQuestion(question.id); });
+    document.querySelectorAll('.panel-resize-handle, .schema-resize-handle').forEach(function (handle) {
+      handle.removeAttribute('aria-hidden');
+      handle.tabIndex = 0;
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-label', handle.id === 'schema-resize-handle' ? 'Resize schema panel' : 'Resize side panel');
+      handle.setAttribute('aria-orientation', handle.id === 'schema-resize-handle' ? 'horizontal' : 'vertical');
+      handle.addEventListener('keydown', function (event) {
+        var vertical = handle.id === 'schema-resize-handle';
+        var previousKey = vertical ? 'ArrowUp' : 'ArrowLeft';
+        var nextKey = vertical ? 'ArrowDown' : 'ArrowRight';
+        if (event.key !== previousKey && event.key !== nextKey) return;
+        event.preventDefault();
+        var delta = event.key === nextKey ? 20 : -20;
+        if (vertical) {
+          var section = document.getElementById('playground-schema-section');
+          section.style.height = Math.max(80, Math.min(innerHeight * 0.7, section.offsetHeight + delta)) + 'px';
+        } else {
+          var left = handle.id === 'left-panel-resize-handle';
+          var panel = document.getElementById(left ? 'sidebar' : 'right-panel');
+          document.documentElement.style.setProperty(left ? '--sidebar-width' : '--right-panel-width', Math.max(120, Math.min(innerWidth * 0.5, panel.offsetWidth + (left ? delta : -delta))) + 'px');
+        }
+      });
+    });
+    updateWorkspace();
+  }
+
+  function updateWorkspace() {
+    activeQuestion = Math.max(0, Math.min(assessmentQuestions.length - 1, activeQuestion));
+    assessmentQuestions.forEach(function (question, index) {
+      document.getElementById('section-' + question.id).hidden = !allQuestions && index !== activeQuestion;
+      var link = document.querySelector('.nav-link[data-section="' + question.id + '"]');
+      link.setAttribute('aria-current', index === activeQuestion ? 'step' : 'false');
+    });
+    document.getElementById('question-position').textContent = (activeQuestion + 1) + ' / ' + assessmentQuestions.length;
+    document.getElementById('previous-question').disabled = activeQuestion === 0;
+    document.getElementById('next-question').disabled = activeQuestion === assessmentQuestions.length - 1;
+    document.getElementById('focus-view').setAttribute('aria-pressed', String(!allQuestions));
+    document.getElementById('all-view').setAttribute('aria-pressed', String(allQuestions));
+    document.getElementById('screen2').classList.toggle('focus-mode', !allQuestions);
+  }
+
+  function completeSession() {
+    finishedAt = Date.now();
+    clearInterval(timerInterval);
+    saveSession();
+  }
+
   function buildExplorationSchemaInfo(moduleDesc) {
     var container = document.getElementById('playground-schema-info');
     if (!container) return;
@@ -497,6 +884,43 @@
     }
 
     container.innerHTML = html;
+    container.querySelectorAll('.schema-table-panel').forEach(function (panel) {
+      var tableName = panel.dataset.table;
+      var detail = schema.details[tableName];
+      var columns = panel.querySelector('.schema-table-cols');
+      columns.replaceChildren();
+      var description = document.createElement('p');
+      description.textContent = detail.description || '';
+      columns.appendChild(description);
+      detail.columns.forEach(function (column) {
+        var row = document.createElement('div');
+        row.className = 'column-detail';
+        var name = document.createElement('code');
+        name.textContent = column.name;
+        var type = document.createElement('span');
+        type.textContent = column.type + (column.primaryKey ? ' PK' : '') + (column.nullable ? ' nullable' : '');
+        row.appendChild(name);
+        row.appendChild(type);
+        row.appendChild(iconButton('Code', 'Insert ' + column.name + ' into current answer', function () { editors[assessmentQuestions[activeQuestion].id].insert(quoteIdent(column.name)); }));
+        if (column.description) { var explanation = document.createElement('p'); explanation.textContent = column.description; row.appendChild(explanation); }
+        columns.appendChild(row);
+      });
+      detail.foreignKeys.forEach(function (relation) {
+        var link = document.createElement('p');
+        link.className = 'schema-relation';
+        link.textContent = relation.from + ' -> ' + relation.table + '.' + (relation.to || '(primary key)');
+        columns.appendChild(link);
+      });
+      var actions = document.createElement('div');
+      actions.className = 'schema-actions';
+      actions.appendChild(iconButton('Code', 'Insert table name into current answer', function () { editors[assessmentQuestions[activeQuestion].id].insert(quoteIdent(tableName)); }));
+      actions.appendChild(iconButton('Play', 'Open preview query in playground', function () {
+        if (editors.playground.getContent().trim() && !window.confirm('Replace the playground draft with a table preview query?')) return;
+        editors.playground.setContent('SELECT * FROM ' + quoteIdent(tableName) + ' LIMIT 100;');
+        editors.playground.view.focus();
+      }));
+      columns.appendChild(actions);
+    });
 
     container.querySelectorAll('[data-table-toggle]').forEach(function (toggleBtn) {
       toggleBtn.addEventListener('click', function () {
@@ -543,17 +967,18 @@
     return '"' + String(name).replace(/"/g, '""') + '"';
   }
 
-  function loadTablePreview(tableName, previewEl) {
+  async function loadTablePreview(tableName, previewEl) {
     if (!previewEl) return;
     if (!db) {
       previewEl.innerHTML = '<p class="no-results">Database not yet initialized.</p>';
       return;
     }
 
+    if (busy) { previewEl.textContent = 'A query is running. Close and reopen this table afterward.'; return; }
+    setBusy(true);
     try {
-      var countResult = execSQL('SELECT COUNT(*) AS total_rows_ FROM ' + quoteIdent(tableName));
-      var rowCount = countResult.rows && countResult.rows.length ? Number(countResult.rows[0][0]) : 0;
-      var tableResult = execSQL('SELECT * FROM ' + quoteIdent(tableName));
+      var rowCount = schema.details[tableName].rowCount;
+      var tableResult = await execSQL('SELECT * FROM ' + quoteIdent(tableName) + ' LIMIT 100');
 
       tablePreviewState[tableName] = {
         loaded: true,
@@ -564,10 +989,13 @@
 
       renderResultsTable(previewEl, tableResult.rows, tableResult.columns, {
         pageSize: 6,
-        summaryText: rowCount + ' row' + (rowCount !== 1 ? 's' : '') + ' total'
+        summaryText: rowCount + ' rows total; preview of ' + tableResult.rows.length
       });
     } catch (err) {
       previewEl.innerHTML = '<p class="no-results">Unable to preview table: ' + escapeHtml(err.message) + '</p>';
+      await recoverWorker(err);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -897,37 +1325,7 @@
   }
 
   function updateQueryHistory() {
-    var body = document.getElementById('query-history-body');
-    if (!body) return;
-
-    if (!playgroundSuccessHistory.length) {
-      body.innerHTML = '<div class="qh-empty">No queries yet.</div>';
-      return;
-    }
-
-    var html = '';
-    for (var i = playgroundSuccessHistory.length - 1; i >= 0; i--) {
-      var sql = playgroundSuccessHistory[i];
-      var oneLine = sql.replace(/\s+/g, ' ').trim();
-      var display = oneLine.length > 200 ? oneLine.slice(0, 200) + '…' : oneLine;
-      html += '<div class="qh-item">';
-      html += '<button class="qh-play" data-idx="' + i + '" title="Re-run this query">&#9654;</button>';
-      html += '<span class="qh-sql">' + escapeHtml(display) + '</span>';
-      html += '</div>';
-    }
-    body.innerHTML = html;
-
-    body.querySelectorAll('.qh-play').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var idx = parseInt(btn.getAttribute('data-idx'), 10);
-        var sql = playgroundSuccessHistory[idx];
-        editors['playground'].setContent(sql);
-        editors['playground'].format();
-        runPlayground();
-        var scroll = document.querySelector('.right-panel-scroll');
-        if (scroll) scroll.scrollTop = 0;
-      });
-    });
+    renderAttemptHistory('playground');
   }
 
   // ============================================================
@@ -957,6 +1355,7 @@
           editors[key].setTheme(isDark);
         }
       });
+      saveSession();
     });
   }
 
@@ -973,15 +1372,27 @@
   // Finish Work — download results
   // ============================================================
   function finishWork(questions, moduleTitle, moduleVersion) {
-    var confirmed = window.confirm(
-      'Download your results file?\n\n' +
-      'The file will be saved to your downloads folder. ' +
-      'Share it with your recruiter when you are done.'
-    );
-    if (!confirmed) return;
-
-    clearInterval(timerInterval);
-    exportResults(questions, moduleTitle, moduleVersion);
+    if (busy) return;
+    var summary = document.getElementById('finish-summary');
+    summary.replaceChildren();
+    questions.forEach(function (question, index) {
+      refreshQuestion(question.id);
+      var row = document.createElement('div');
+      row.className = 'finish-row';
+      var link = document.createElement('button');
+      link.textContent = 'Question ' + (index + 1) + ': ' + (questionStatuses[question.id] || 'not attempted');
+      link.onclick = function () { document.getElementById('finish-dialog').close(); activeQuestion = index; allQuestions = false; updateWorkspace(); editors[question.id].view.focus(); };
+      row.appendChild(link);
+      if (questionStatuses[question.id] === 'changed') {
+        var restore = document.createElement('button');
+        restore.textContent = 'Use last executed SQL';
+        restore.onclick = function () { editors[question.id].setContent(executions[question.id].sql); finishWork(questions, moduleTitle, moduleVersion); };
+        row.appendChild(restore);
+      }
+      summary.appendChild(row);
+    });
+    var dialog = document.getElementById('finish-dialog');
+    if (!dialog.open) dialog.showModal();
   }
 
   // ============================================================
@@ -1031,6 +1442,11 @@
 
     // Score
     html += '<div class="score">' + passCount + ' of ' + questions.length + ' questions passed</div>';
+    html += '<h2>Interviewer Scorecard</h2><table><tr><th>Question</th><th>Difficulty / topics</th><th>Status</th><th>Recorded runs</th></tr>';
+    questions.forEach(function (question, index) {
+      html += '<tr><td>Q' + (index + 1) + '</td><td>' + escapeHtml([question.difficulty || '', (question.tags || []).join(', ')].join(' ')) + '</td><td>' + escapeHtml(questionStatuses[question.id] || 'not attempted') + '</td><td>' + (attempts[question.id] || []).length + '</td></tr>';
+    });
+    html += '</table><h3>Reviewer notes</h3><div contenteditable="true" role="textbox" aria-label="Reviewer notes" style="min-height:5rem;border:1px solid #aaa;padding:0.5rem"></div>';
 
     // Per-question results
     html += '<h2>Question Results</h2>';
@@ -1042,6 +1458,8 @@
       else if (status === 'fail')          { badgeClass = 'badge-fail';  badgeText = 'FAIL'; }
       else if (status === 'error')         { badgeClass = 'badge-error'; badgeText = 'ERROR'; }
       else if (status === 'not-permitted') { badgeClass = 'badge-np';    badgeText = 'NOT PERMITTED'; }
+      else if (status === 'changed')       { badgeText = 'EDITED SINCE LAST RUN - UNGRADED'; }
+      else if (status === 'draft')         { badgeText = 'NOT RUN - UNGRADED'; }
 
       html += '<div class="question-block">';
       html += '<h3>Q' + (idx + 1) + ': <span class="' + badgeClass + '">' + badgeText + '</span></h3>';
@@ -1056,7 +1474,19 @@
         html += '<p><em>No SQL submitted.</em></p>';
       }
 
-      html += reportResultsHTML(document.getElementById('results-' + q.id));
+      var record = executions[q.id];
+      if (record) {
+        html += '<p><strong>Last execution:</strong> ' + escapeHtml(record.at) + ' | ' + escapeHtml(record.message || record.status) + '</p>';
+        if (status === 'changed') html += '<p><strong>Previously executed SQL (not the current submission):</strong></p><pre>' + escapeHtml(record.sql) + '</pre>';
+        if (record.truncated) html += '<p>Result sample: ' + record.rows.length + ' of ' + record.rowCount + ' rows. Grading used the complete result.</p>';
+        html += reportResultsHTML(document.getElementById('results-' + q.id));
+      }
+      var history = attempts[q.id] || [];
+      if (history.length) {
+        html += '<details><summary>Recent execution history (up to 20 runs)</summary>';
+        history.forEach(function (attempt) { html += '<p>' + escapeHtml(attempt.at + ' - ' + attempt.status) + '</p><pre>' + escapeHtml(attempt.sql) + '</pre>'; });
+        html += '</details>';
+      }
       html += '</div>';
     });
 
@@ -1064,28 +1494,19 @@
     html += '<div class="playground-section">';
     html += '<h2>Playground Queries</h2>';
     html += '<div class="section">';
-    if (playgroundSuccessHistory.length === 0) {
-      html += '<p><em>No successful playground queries recorded.</em></p>';
+    if (!(attempts.playground || []).length) {
+      html += '<p><em>No playground queries recorded.</em></p>';
     } else {
-      playgroundSuccessHistory.forEach(function (q, i) {
+      attempts.playground.forEach(function (attempt, i) {
         html += '<h3>Query ' + (i + 1) + '</h3>';
-        html += '<pre>' + escapeHtml(q) + '</pre>';
+        html += '<p>' + escapeHtml(attempt.status) + '</p><pre>' + escapeHtml(attempt.sql) + '</pre>';
       });
     }
     html += '</div></div>';
 
     html += '</body></html>';
 
-    // Always download via Blob — works regardless of pop-up blocker settings.
-    var blob = new Blob([html], { type: 'text/html' });
-    var blobUrl = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = (moduleTitle || 'results').replace(/[^a-z0-9_\-]/gi, '_') + '_results.html';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 10000);
+    downloadFile(html, 'text/html', 'results.html');
 
     // Show a brief success toast regardless of pop-up blocker state.
     var toast = document.createElement('div');
@@ -1096,18 +1517,11 @@
       'z-index:10000', 'line-height:1.4', 'box-shadow:0 2px 8px rgba(0,0,0,0.3)',
       'transition:opacity 0.5s'
     ].join(';');
-    toast.textContent = 'Results file downloaded. Share it with your recruiter when you are done.';
+    toast.textContent = 'Report download requested. Keep the report and share it with your recruiter.';
     document.body.appendChild(toast);
     setTimeout(function () { toast.style.opacity = '0'; }, 6000);
     setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 6600);
 
-    // Also open a print window if pop-ups are allowed.
-    var w = window.open('', '_blank');
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-      setTimeout(function () { w.focus(); w.print(); }, 250);
-    }
   }
 
   function reportResultsHTML(resultsEl) {
@@ -1183,8 +1597,26 @@
     // Summary
     var summary = document.createElement('div');
     summary.className = 'results-summary';
-    summary.textContent = options.summaryText || (rows.length + ' row' + (rows.length !== 1 ? 's' : '') + ' returned');
+    summary.textContent = options.summaryText || (options.truncated ? 'Showing ' + rows.length + (options.rowCount ? ' of ' + options.rowCount : '+') + ' rows (sample)' : rows.length + ' row' + (rows.length !== 1 ? 's' : '') + ' returned');
     container.appendChild(summary);
+    var actions = document.createElement('div');
+    actions.className = 'result-actions';
+    function csv() {
+      return [columnNames].concat(rows).map(function (row) {
+        return row.map(function (value) {
+          if (value === null || value === undefined) return '';
+          var text = String(value);
+          if (typeof value === 'string' && /^[=+@\-\t\r]/.test(text)) text = "'" + text;
+          return '"' + text.replace(/"/g, '""') + '"';
+        }).join(',');
+      }).join('\r\n');
+    }
+    actions.appendChild(iconButton('Copy', 'Copy displayed result data as CSV', async function () {
+      try { await navigator.clipboard.writeText(csv()); summary.textContent = 'Result data copied'; }
+      catch (error) { summary.textContent = 'Clipboard unavailable. Use Download CSV.'; }
+    }));
+    actions.appendChild(iconButton('Download', 'Download displayed result data as CSV', function () { downloadFile(csv(), 'text/csv', options.truncated ? 'result-sample.csv' : 'results.csv'); }));
+    container.appendChild(actions);
 
     var wrap = document.createElement('div');
     wrap.className = 'results-table-wrap';
@@ -1248,6 +1680,27 @@
           doSort();
         }
       });
+      var resize = document.createElement('span');
+      resize.className = 'column-resize';
+      resize.setAttribute('role', 'separator');
+      resize.setAttribute('aria-label', 'Resize ' + col);
+      resize.setAttribute('aria-orientation', 'vertical');
+      resize.tabIndex = 0;
+      resize.addEventListener('click', function (event) { event.stopPropagation(); });
+      resize.addEventListener('keydown', function (event) {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault(); event.stopPropagation();
+        th.style.minWidth = Math.max(80, th.offsetWidth + (event.key === 'ArrowRight' ? 20 : -20)) + 'px';
+      });
+      resize.addEventListener('pointerdown', function (event) {
+        event.preventDefault(); event.stopPropagation();
+        var start = event.clientX;
+        var width = th.offsetWidth;
+        resize.setPointerCapture(event.pointerId);
+        resize.onpointermove = function (move) { th.style.minWidth = Math.max(80, width + move.clientX - start) + 'px'; };
+        resize.onpointerup = function () { resize.onpointermove = null; };
+      });
+      th.appendChild(resize);
 
       headRow.appendChild(th);
     });
@@ -1299,8 +1752,16 @@
           } else {
             var str = String(val);
             if (str.length > 200) {
-              td.textContent = str.substring(0, 200) + '…';
-              td.title = str;
+              var expand = document.createElement('button');
+              expand.className = 'cell-expand';
+              expand.textContent = str.substring(0, 200) + '...';
+              expand.title = 'Expand full cell value';
+              expand.addEventListener('click', function () {
+                var expanded = this.getAttribute('aria-expanded') === 'true';
+                this.setAttribute('aria-expanded', String(!expanded));
+                this.textContent = expanded ? str.substring(0, 200) + '...' : str;
+              });
+              td.appendChild(expand);
             } else {
               td.textContent = str;
               td.title = str;

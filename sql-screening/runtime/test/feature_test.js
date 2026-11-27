@@ -21,7 +21,7 @@ if (!moduleArg) {
 const moduleId = moduleArg.split('=')[1];
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const DIST_HTML = path.join(REPO_ROOT, 'dist', `${moduleId}.html`);
+const DIST_HTML = args.find(arg => arg.startsWith('--html='))?.slice(7) || path.join(REPO_ROOT, 'dist', `${moduleId}.html`);
 const GRADING_LOGIC = path.join(REPO_ROOT, 'runtime', 'grading-logic.js');
 
 if (!fs.existsSync(DIST_HTML)) {
@@ -59,39 +59,8 @@ const htmlContent = fs.readFileSync(DIST_HTML, 'utf-8');
 // We test the classify logic directly rather than running the full app in jsdom
 // (which would require WASM), by recreating the exact same logic here.
 // This validates the spec contract (rules must be in this exact order).
-function classify(sql) {
-  var s = sql.trim().replace(/\s+/g, ' ');
-  if (/^SELECT\b/i.test(s)) return 'ALLOWED';
-  if (/CREATE\s+(TEMP|TEMPORARY)\s+TABLE/i.test(s)) return 'ALLOWED';
-  return 'BLOCKED';
-}
-
-// Verify SQL guard logic is implemented in the HTML (not silently missing).
-// Check for the regex content — esbuild preserves regex literals even when
-// minifying, so this survives minification unlike checking the function name.
-ok(htmlContent.includes('ALLOWED') && htmlContent.includes('BLOCKED'),
-  'classify function present in dist HTML');
-ok(htmlContent.includes("CREATE\\\\s+(TEMP|TEMPORARY)\\\\s+TABLE") ||
-   htmlContent.includes('CREATE\\s+(TEMP|TEMPORARY)\\s+TABLE') ||
-   htmlContent.includes('TEMP|TEMPORARY'),
-  'TEMP|TEMPORARY pattern present in classify implementation');
-
-// Test all classify rules
-ok(classify('SELECT * FROM accounts') === 'ALLOWED', 'SELECT → ALLOWED');
-ok(classify('select * from accounts') === 'ALLOWED', 'select (lowercase) → ALLOWED');
-ok(classify('  SELECT 1') === 'ALLOWED', 'Trimmed SELECT → ALLOWED');
-ok(classify('CREATE TEMP TABLE tmp AS SELECT 1 AS x') === 'ALLOWED', 'CREATE TEMP TABLE → ALLOWED');
-ok(classify('CREATE TEMPORARY TABLE tmp AS SELECT 1') === 'ALLOWED', 'CREATE TEMPORARY TABLE → ALLOWED');
-ok(classify('create temp table t AS SELECT 1') === 'ALLOWED', 'create temp table (lowercase) → ALLOWED');
-ok(classify('DROP TABLE accounts') === 'BLOCKED', 'DROP TABLE → BLOCKED');
-ok(classify('DELETE FROM accounts') === 'BLOCKED', 'DELETE FROM → BLOCKED');
-ok(classify('INSERT INTO accounts VALUES (1)') === 'BLOCKED', 'INSERT INTO → BLOCKED');
-ok(classify('UPDATE accounts SET balance = 0') === 'BLOCKED', 'UPDATE → BLOCKED');
-ok(classify('CREATE TABLE new_table (id INTEGER)') === 'BLOCKED',
-  'CREATE TABLE (without TEMP) → BLOCKED');
-ok(classify('TRUNCATE TABLE accounts') === 'BLOCKED', 'TRUNCATE → BLOCKED');
-ok(classify('') === 'BLOCKED', 'Empty string → BLOCKED');
-ok(classify('   ') === 'BLOCKED', 'Whitespace-only → BLOCKED');
+ok(htmlContent.includes('WORKER_SOURCE') && htmlContent.includes('EXPLAIN'), 'SQLite validation worker embedded');
+ok(htmlContent.includes('DecompressionStream'), 'Offline decompression included');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test grading-logic.js normalization
@@ -106,15 +75,15 @@ async function runGradingTests() {
   const rows1 = [['charlie', '30'], ['alice', '10'], ['bob', '20']];
   const cols1 = ['name', 'score'];
   const norm1 = GradingLogic.normalizeRows(rows1, cols1);
-  ok(norm1[0][0] === 'alice', 'Rows sorted lexicographically');
-  ok(norm1[2][0] === 'charlie', 'Rows sorted lexicographically (last)');
+  ok(norm1[0][0][1] === 'alice', 'Rows sorted lexicographically');
+  ok(norm1[2][0][1] === 'charlie', 'Rows sorted lexicographically (last)');
 
   // NULL handling
   const rows2 = [[null, '5'], ['dave', null]];
   const cols2 = ['name', 'val'];
   const norm2 = GradingLogic.normalizeRows(rows2, cols2);
-  ok(norm2.some(r => r[0] === 'null'), 'NULL values → "null" string');
-  ok(norm2.some(r => r[1] === 'null'), 'NULL values → "null" string (second col)');
+  ok(norm2.some(r => r[0][0] === 'null'), 'NULL values retain their type');
+  ok(norm2.some(r => r[1][0] === 'null'), 'NULL values retain their type (second col)');
 
   // Hash consistency: same input → same hash
   const hash1a = await GradingLogic.computeHash(rows1, cols1);
